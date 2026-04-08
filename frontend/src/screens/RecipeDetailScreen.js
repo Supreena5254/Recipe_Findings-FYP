@@ -17,6 +17,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import RatingModal from "../components/RatingModal";
 import RatingsListModal from "../components/RatingsListModal";
 
+// ✅ NEW: Voice feature
+import * as Speech from "expo-speech";
+
 export default function RecipeDetailScreen({ route, navigation }) {
   const { recipeId } = route.params;
   const [recipe, setRecipe] = useState(null);
@@ -33,10 +36,22 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [ratingsData, setRatingsData] = useState(null);
   const [loadingRatings, setLoadingRatings] = useState(false);
 
+  // ✅ NEW: Voice feature states
+  const [voiceModeActive, setVoiceModeActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
   // Refresh recipe details every time screen is focused
   useFocusEffect(
     React.useCallback(() => {
       fetchRecipeDetails();
+      return () => {
+        // ✅ NEW: Stop speech when leaving screen
+        Speech.stop();
+        setVoiceModeActive(false);
+        setIsSpeaking(false);
+        setCurrentStepIndex(0);
+      };
     }, [recipeId])
   );
 
@@ -328,6 +343,66 @@ export default function RecipeDetailScreen({ route, navigation }) {
     );
   };
 
+  // ============================================
+  // ✅ NEW: VOICE FEATURE FUNCTIONS
+  // ============================================
+
+  const speakStep = (index, stepsArray) => {
+    Speech.stop();
+    setIsSpeaking(true);
+    const text = stepsArray[index];
+    Speech.speak(text, {
+      language: "en-US",
+      pitch: 1.0,
+      rate: 0.9,
+      onDone: () => setIsSpeaking(false),
+      onStopped: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
+  };
+
+  const startVoiceMode = (stepsArray) => {
+    if (!stepsArray || stepsArray.length === 0) {
+      Alert.alert("No Steps", "This recipe has no steps to read.");
+      return;
+    }
+    setVoiceModeActive(true);
+    setCurrentStepIndex(0);
+    speakStep(0, stepsArray);
+  };
+
+  const stopVoiceMode = () => {
+    Speech.stop();
+    setVoiceModeActive(false);
+    setIsSpeaking(false);
+    setCurrentStepIndex(0);
+  };
+
+  const goToNextStep = (stepsArray) => {
+    const next = currentStepIndex + 1;
+    if (next < stepsArray.length) {
+      setCurrentStepIndex(next);
+      speakStep(next, stepsArray);
+    } else {
+      Speech.speak("All steps completed! Enjoy your meal!", {
+        language: "en-US",
+        onDone: () => { setIsSpeaking(false); setVoiceModeActive(false); },
+      });
+    }
+  };
+
+  const goToPrevStep = (stepsArray) => {
+    const prev = currentStepIndex - 1;
+    if (prev >= 0) {
+      setCurrentStepIndex(prev);
+      speakStep(prev, stepsArray);
+    }
+  };
+
+  const replayStep = (stepsArray) => {
+    speakStep(currentStepIndex, stepsArray);
+  };
+
   const addToGroceryList = async () => {
     try {
       const response = await api.post(`/grocery/add-recipe/${recipeId}`);
@@ -592,13 +667,46 @@ export default function RecipeDetailScreen({ route, navigation }) {
 
         {/* Instructions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Instructions</Text>
+          {/* ✅ NEW: Header row with Listen button */}
+          <View style={styles.sectionHeaderWithButton}>
+            <Text style={styles.sectionTitle}>Instructions</Text>
+            <TouchableOpacity
+              style={[styles.listenButton, voiceModeActive && styles.listenButtonActive]}
+              onPress={() => voiceModeActive ? stopVoiceMode() : startVoiceMode(steps)}
+            >
+              <Feather name={voiceModeActive ? "volume-x" : "volume-2"} size={16} color="#FFF" />
+              <Text style={styles.listenButtonText}>{voiceModeActive ? "Stop" : "Listen"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ✅ NEW: Hint when voice is active */}
+          {voiceModeActive && (
+            <View style={styles.voiceHint}>
+              <Feather name="info" size={14} color="#16a34a" />
+              <Text style={styles.voiceHintText}>Use ‹ › buttons below to navigate steps</Text>
+            </View>
+          )}
+
           {steps.map((step, index) => (
-            <View key={index} style={styles.stepItem}>
-              <View style={styles.stepNumber}>
+            <View
+              key={index}
+              style={[
+                styles.stepItem,
+                voiceModeActive && index === currentStepIndex && styles.stepItemActive,
+              ]}
+            >
+              <View style={[
+                styles.stepNumber,
+                voiceModeActive && index === currentStepIndex && styles.stepNumberActive,
+              ]}>
                 <Text style={styles.stepNumberText}>{index + 1}</Text>
               </View>
-              <Text style={styles.stepText}>{step}</Text>
+              <Text style={[
+                styles.stepText,
+                voiceModeActive && index === currentStepIndex && styles.stepTextActive,
+              ]}>
+                {step}
+              </Text>
             </View>
           ))}
         </View>
@@ -614,8 +722,40 @@ export default function RecipeDetailScreen({ route, navigation }) {
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: voiceModeActive ? 110 : 40 }} />
       </ScrollView>
+
+      {/* ✅ NEW: Floating voice control bar */}
+      {voiceModeActive && (
+        <View style={styles.voiceBar}>
+          <TouchableOpacity
+            style={[styles.voiceNavBtn, currentStepIndex === 0 && styles.voiceNavBtnDisabled]}
+            onPress={() => goToPrevStep(steps)}
+            disabled={currentStepIndex === 0}
+          >
+            <Feather name="chevron-left" size={26} color="#FFF" />
+          </TouchableOpacity>
+
+          <View style={styles.voiceBarCenter}>
+            <TouchableOpacity style={styles.replayBtn} onPress={() => replayStep(steps)}>
+              <Feather name={isSpeaking ? "volume-2" : "repeat"} size={18} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.voiceBarText}>Step {currentStepIndex + 1} / {steps.length}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.voiceNavBtn, currentStepIndex === steps.length - 1 && styles.voiceNavBtnDisabled]}
+            onPress={() => goToNextStep(steps)}
+            disabled={currentStepIndex === steps.length - 1}
+          >
+            <Feather name="chevron-right" size={26} color="#FFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.voiceStopBtn} onPress={stopVoiceMode}>
+            <Feather name="x" size={20} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* RATING MODAL */}
       <RatingModal
@@ -971,5 +1111,116 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#16a34a",
     fontWeight: "500",
+  },
+
+  // ✅ NEW: Voice feature styles
+  listenButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#16a34a",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: "#16a34a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  listenButtonActive: {
+    backgroundColor: "#ef4444",
+    shadowColor: "#ef4444",
+  },
+  listenButtonText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  voiceHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#dcfce7",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+    gap: 8,
+  },
+  voiceHintText: {
+    fontSize: 13,
+    color: "#15803d",
+    fontWeight: "500",
+  },
+  stepItemActive: {
+    backgroundColor: "#f0fdf4",
+    borderLeftWidth: 4,
+    borderLeftColor: "#16a34a",
+  },
+  stepNumberActive: {
+    backgroundColor: "#15803d",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  stepTextActive: {
+    color: "#15803d",
+    fontWeight: "600",
+  },
+  voiceBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#16a34a",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  voiceBarCenter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  voiceBarText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  replayBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceNavBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceNavBtnDisabled: {
+    opacity: 0.35,
+  },
+  voiceStopBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

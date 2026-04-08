@@ -17,6 +17,8 @@ export default function SearchResultsScreen({ route, navigation }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState(new Set());
+  // Track the displayed query separately so we can clear the HomeScreen field on back
+  const displayQuery = query || "";
 
   useEffect(() => {
     searchRecipes();

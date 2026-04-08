@@ -4,23 +4,33 @@ const multer = require('multer');
 const { minioClient, BUCKET_NAME } = require('../config/minio');
 const { v4: uuidv4 } = require('uuid');
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 router.post('/', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const fileName = `${uuidv4()}-${req.file.originalname}`;
-    const fileBuffer = req.file.buffer;
-    const contentType = req.file.mimetype;
+    const ext = req.file.originalname.split('.').pop();
+    const fileName = `${uuidv4()}.${ext}`;
 
-    await minioClient.putObject(BUCKET_NAME, fileName, fileBuffer, fileBuffer.length, { 'Content-Type': contentType });
+    await minioClient.putObject(
+      BUCKET_NAME,
+      fileName,
+      req.file.buffer,
+      req.file.buffer.length,
+      { 'Content-Type': req.file.mimetype }
+    );
 
-    const imageUrl = `http://localhost:9000/${BUCKET_NAME}/${fileName}`;
-    res.json({ success: true, imageUrl });
+    // ✅ Store ONLY the filename — backend builds full URL dynamically
+    console.log(`✅ Image uploaded, filename: ${fileName}`);
+    res.json({ success: true, imageUrl: fileName });
+
   } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: 'Upload failed' });
+    console.error('❌ Upload error:', error);
+    res.status(500).json({ error: 'Upload failed', details: error.message });
   }
 });
 

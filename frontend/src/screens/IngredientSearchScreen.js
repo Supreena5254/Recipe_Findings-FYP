@@ -50,69 +50,27 @@ export default function IngredientSearchScreen({ navigation }) {
   };
 
   const calculateMatchPercentage = (recipe) => {
-    let score = 0;
-    const weights = {
-      ingredients: 50,
-      dietary: 20,
-      difficulty: 10,
-      mealType: 10,
-      cuisine: 10
-    };
+    // INGREDIENT MATCH ONLY — based purely on how many of the recipe's
+    // actual ingredients the user has. 100% = user has ALL recipe ingredients.
+    const recipeIngredientsList = typeof recipe.ingredients === 'string'
+      ? recipe.ingredients.split(/[;\n]/).map(i => i.trim()).filter(Boolean)
+      : [];
 
-    // INGREDIENT MATCH (50%)
-    if (ingredients.length > 0) {
-      const recipeIngredients = typeof recipe.ingredients === 'string'
-        ? recipe.ingredients.toLowerCase()
-        : '';
-
-      let ingredientMatches = 0;
-      ingredients.forEach(ingredient => {
-        if (recipeIngredients.includes(ingredient.toLowerCase())) {
-          ingredientMatches++;
-        }
-      });
-
-      const ingredientMatchRatio = ingredientMatches / ingredients.length;
-      score += ingredientMatchRatio * weights.ingredients;
+    if (recipeIngredientsList.length === 0 || ingredients.length === 0) {
+      return 0;
     }
 
-    // DIETARY MATCH (20%)
-    if (dietaryPref.length > 0) {
-      if (dietaryPref.includes(recipe.dietary_preference)) {
-        score += weights.dietary;
-      }
-    } else {
-      score += weights.dietary;
-    }
+    const userIngredientsLower = ingredients.map(i => i.toLowerCase());
 
-    // DIFFICULTY MATCH (10%)
-    if (difficulty) {
-      if (recipe.difficulty_level === difficulty) {
-        score += weights.difficulty;
-      }
-    } else {
-      score += weights.difficulty;
-    }
+    // Count how many of the RECIPE's ingredients the user has
+    const matchedCount = recipeIngredientsList.filter(recipeIng => {
+      const recipeIngLower = recipeIng.toLowerCase();
+      return userIngredientsLower.some(userIng =>
+        recipeIngLower.includes(userIng) || userIng.includes(recipeIngLower)
+      );
+    }).length;
 
-    // MEAL TYPE MATCH (10%)
-    if (mealType.length > 0) {
-      if (mealType.includes(recipe.meal_type)) {
-        score += weights.mealType;
-      }
-    } else {
-      score += weights.mealType;
-    }
-
-    // CUISINE MATCH (10%)
-    if (cuisine.length > 0) {
-      if (cuisine.includes(recipe.cuisine_type)) {
-        score += weights.cuisine;
-      }
-    } else {
-      score += weights.cuisine;
-    }
-
-    return Math.round(score);
+    return Math.round((matchedCount / recipeIngredientsList.length) * 100);
   };
 
   const getMissingIngredients = (recipe) => {

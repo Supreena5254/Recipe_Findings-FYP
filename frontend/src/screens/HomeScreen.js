@@ -31,6 +31,14 @@ export default function HomeScreen({ navigation }) {
     fetchRecipes();
   }, []);
 
+  // ✅ FIX: Clear search field whenever the HomeScreen comes back into focus
+  React.useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      setSearchQuery("");
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   const fetchRecipes = async () => {
     try {
       setLoading(true);

@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { buildImageUrl } = require("../config/minio");
 
 console.log("🍳 RECIPE CONTROLLER - INGREDIENT-PRIORITY SEARCH");
 
@@ -17,7 +18,7 @@ exports.getRecommendedRecipes = async (req, res) => {
     if (!userId) {
       const query = `SELECT * FROM recipes ORDER BY rating DESC LIMIT 20`;
       const result = await pool.query(query);
-      return res.json(result.rows);
+      return res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
     }
 
     // Get user preferences
@@ -39,7 +40,7 @@ exports.getRecommendedRecipes = async (req, res) => {
         ORDER BY rating DESC LIMIT 20
       `;
       const result = await pool.query(query, [userId]);
-      return res.json(result.rows);
+      return res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
     }
 
     const prefs = prefResult.rows[0];
@@ -128,7 +129,7 @@ exports.getRecommendedRecipes = async (req, res) => {
     }
 
     console.log("========================================\n");
-    res.json(result.rows);
+    res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
 
   } catch (error) {
     console.error("\n❌ ERROR:", error.message);
@@ -266,7 +267,7 @@ exports.getRecipes = async (req, res) => {
 
     console.log("========================================\n");
 
-    res.json(result.rows);
+    res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
 
   } catch (error) {
     console.error("❌ ERROR:", error.message);
@@ -367,7 +368,7 @@ exports.getAllRecipes = async (req, res) => {
 
     console.log("========================================\n");
 
-    res.json(result.rows);
+    res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
   } catch (error) {
     console.error("❌ getAllRecipes error:", error);
     res.status(500).json({ error: error.message });
@@ -408,7 +409,7 @@ exports.getRecipeById = async (req, res) => {
     console.log("   is_favorite:", result.rows[0].is_favorite);
     console.log("========================================\n");
 
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], image_url: buildImageUrl(result.rows[0].image_url) });
   } catch (error) {
     console.error("❌ getRecipeById error:", error);
     res.status(500).json({ error: error.message });
@@ -478,7 +479,7 @@ exports.getFavorites = async (req, res) => {
       ORDER BY uf.created_at DESC
     `;
     const result = await pool.query(query, [userId]);
-    res.json(result.rows);
+    res.json(result.rows.map(r => ({ ...r, image_url: buildImageUrl(r.image_url) })));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
