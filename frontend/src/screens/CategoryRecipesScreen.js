@@ -5,13 +5,14 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image, // ✅ ADD THIS
+  Image,
   ActivityIndicator,
   TextInput,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import api from "../api/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl"; // ✅ dynamic import
 
 const CategoryRecipesScreen = ({ route, navigation }) => {
   const { category, type } = route.params;
@@ -20,8 +21,10 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [favorites, setFavorites] = useState([]);
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null); // ✅ inside component
 
   useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl); // ✅ fetch once on mount
     fetchRecipes();
     fetchFavorites();
   }, [category, type]);
@@ -48,25 +51,17 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
       console.log("🔍 Fetching recipes for category:", category, "type:", type);
 
       let response;
-
       if (type === "mealType") {
-        console.log("📡 API Call: /recipes?mealType=" + category);
         response = await api.get(`/recipes?mealType=${category}`);
       } else {
-        console.log("📡 API Call: /recipes?cuisine=" + category);
         response = await api.get(`/recipes?cuisine=${category}`);
       }
 
       console.log("✅ Received recipes:", response.data.length);
-      if (response.data.length > 0) {
-        console.log("📋 First recipe:", response.data[0].title);
-      }
-
       setRecipes(response.data);
       setFilteredRecipes(response.data);
     } catch (error) {
       console.error("❌ Error fetching recipes:", error);
-      console.error("Error response:", error.response?.data);
       setRecipes([]);
       setFilteredRecipes([]);
     } finally {
@@ -88,7 +83,6 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
   const toggleFavorite = async (recipeId) => {
     try {
       const isFavorite = favorites.includes(recipeId);
-
       if (isFavorite) {
         await api.delete(`/recipes/${recipeId}/favorite`);
         setFavorites(favorites.filter((id) => id !== recipeId));
@@ -117,22 +111,22 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
     return iconMap[cuisineType] || "food";
   };
 
-  // ✅ UPDATED RECIPE CARD WITH IMAGE SUPPORT
   const renderRecipeCard = ({ item }) => {
-    const imageUrl = item.image_url;
-    const hasImage = imageUrl && imageUrl.trim() !== '';
+    // ✅ uses dynamic minioBaseUrl — works on both WiFi and hotspot
+    const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, item.image_url) : null;
+    const hasImage = imageUrl !== null;
 
     return (
       <TouchableOpacity
         style={styles.recipeCard}
         onPress={() => navigation.navigate("RecipeDetail", { recipeId: item.recipe_id })}
       >
-        {/* ✅ SHOW IMAGE IF AVAILABLE, OTHERWISE SHOW ICON */}
         {hasImage ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.recipeImage}
-            onError={(e) => console.log('Image load error for recipe:', item.recipe_id)}
+            onError={() => console.log('❌ Image load error for recipe:', item.recipe_id, '| URL:', imageUrl)}
+            onLoad={() => console.log('✅ Image loaded:', item.recipe_id)}
           />
         ) : (
           <View style={styles.recipeImagePlaceholder}>
@@ -155,7 +149,7 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
             </View>
             <View style={styles.recipeMetaItem}>
               <Ionicons name="flame-outline" size={16} color="#f97316" />
-              <Text style={styles.recipeMetaText}>{item.difficulty}</Text>
+              <Text style={styles.recipeMetaText}>{item.difficulty_level}</Text>
             </View>
           </View>
         </View>
@@ -208,9 +202,7 @@ const CategoryRecipesScreen = ({ route, navigation }) => {
       {filteredRecipes.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="restaurant-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyText}>
-            No recipes found for {category}
-          </Text>
+          <Text style={styles.emptyText}>No recipes found for {category}</Text>
         </View>
       ) : (
         <FlatList
@@ -291,7 +283,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  // ✅ NEW: Image style
   recipeImage: {
     width: 120,
     height: 120,

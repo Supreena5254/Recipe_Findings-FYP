@@ -1,4 +1,4 @@
-// backend/controllers/groceryController.js
+
 const pool = require("../config/db");
 
 // Get user's grocery list
@@ -120,7 +120,7 @@ exports.addRecipeToGrocery = async (req, res) => {
     const ingredientsData = ingredients.map((ing, index) => {
       const item = {
         name: ing,
-        quantity: quantities[index] || '', // Add quantity, empty string if not available
+        quantity: quantities[index] || '',
         checked: false
       };
       console.log(`   [${index}] ${item.name} → ${item.quantity}`);

@@ -33,6 +33,13 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/api/config", (req, res) => {
+  const { MINIO_PUBLIC_HOST } = require("./config/minio");
+  res.json({
+    minioBaseUrl: `http://${MINIO_PUBLIC_HOST}:9000/recipe-images`
+  });
+});
+
 // Import routes
 console.log("📦 Loading routes...");
 const authRoutes = require("./routes/auth");

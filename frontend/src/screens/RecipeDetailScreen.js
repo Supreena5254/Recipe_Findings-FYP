@@ -16,25 +16,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import RatingModal from "../components/RatingModal";
 import RatingsListModal from "../components/RatingsListModal";
-
-// ✅ Voice feature
 import * as Speech from "expo-speech";
-
-// ✅ FIX: Your backend IP — must match your .env / server IP
-// Change this if your IP changes
-const MINIO_BASE_URL = "http://192.168.10.73:9000/recipe-images";
-
-// ✅ FIX: Helper to build full image URL from filename or partial URL
-const buildImageUrl = (imageUrl) => {
-  if (!imageUrl) return null;
-  const filename = imageUrl.startsWith("http")
-    ? imageUrl.split("/").pop()
-    : imageUrl.trim();
-  return `${MINIO_BASE_URL}/${filename}`;
-};
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl";
 
 export default function RecipeDetailScreen({ route, navigation }) {
   const { recipeId } = route.params;
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null);
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -53,6 +40,10 @@ export default function RecipeDetailScreen({ route, navigation }) {
   const [voiceModeActive, setVoiceModeActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
+  useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl);
+  }, []);
 
   // Refresh recipe details every time screen is focused
   useFocusEffect(
@@ -79,7 +70,7 @@ export default function RecipeDetailScreen({ route, navigation }) {
       console.log("   is_favorite:", response.data.is_favorite);
       console.log("   rating:", response.data.rating);
       console.log("   rating_count:", response.data.rating_count);
-      console.log("   image_url:", response.data.image_url); // ✅ debug image
+      console.log("   image_url:", response.data.image_url);
 
       setRecipe(response.data);
 
@@ -454,34 +445,28 @@ export default function RecipeDetailScreen({ route, navigation }) {
     );
   }
 
-  // ✅ FIX 1: Parse ingredients safely
   const ingredients = typeof recipe.ingredients === 'string'
     ? recipe.ingredients.split(';').map(i => i.trim()).filter(Boolean)
     : (Array.isArray(recipe.ingredients) ? recipe.ingredients : []);
 
-  // Parse quantities safely
   const quantities = typeof recipe.quantity === 'string'
     ? recipe.quantity.split(';').map(q => q.trim())
     : (Array.isArray(recipe.quantity) ? recipe.quantity : []);
 
-  // Combine ingredients with quantities
   const ingredientsWithQuantities = ingredients.map((ingredient, index) => ({
     name: ingredient,
     quantity: quantities[index] || ''
   }));
 
-  // ✅ FIX 2: Parse instructions (NOT steps — your DB column is "instructions")
   const steps = typeof recipe.instructions === 'string'
     ? recipe.instructions.split('|').map(s => s.trim()).filter(Boolean)
     : (Array.isArray(recipe.instructions) ? recipe.instructions : []);
 
-  // ✅ FIX 3: Build image URL properly using helper
-  const imageUrl = buildImageUrl(recipe.image_url);
+  const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, recipe.image_url) : null;
   const hasImage = imageUrl !== null;
 
-  console.log("🖼️ Image URL built:", imageUrl); // debug
+  console.log("🖼️ Image URL built:", imageUrl);
 
-  // Format rating display
   const displayRating = recipe.rating ? parseFloat(recipe.rating).toFixed(1) : "0.0";
   const ratingCount = recipe.rating_count || 0;
 
@@ -502,7 +487,6 @@ export default function RecipeDetailScreen({ route, navigation }) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recipe Details</Text>
 
-        {/* Heart Button - RED when favorited */}
         <TouchableOpacity
           style={[
             styles.iconButton,
@@ -594,7 +578,6 @@ export default function RecipeDetailScreen({ route, navigation }) {
             <Text style={styles.infoValue}>{recipe.calories}</Text>
           </View>
 
-          {/* CLICKABLE RATING CARD */}
           <TouchableOpacity
             style={styles.infoCard}
             onPress={handleRatingClick}

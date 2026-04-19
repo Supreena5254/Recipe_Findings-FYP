@@ -335,8 +335,6 @@ exports.updatePreferences = async (req, res) => {
       health_goal
     });
 
-    // ✅ FIX: Convert comma-separated strings to arrays for PostgreSQL
-    // Database expects TEXT[] (array type), not TEXT (string type)
 
     // Handle allergies
     let allergiesArray = null;

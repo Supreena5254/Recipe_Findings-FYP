@@ -1,15 +1,15 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-// ✅ FIX 1: Reduced max from 20 → 5 to prevent "too many clients" error
+
 // PostgreSQL default max_connections = 100
 // Multiple restarts × 20 connections = overflow!
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: false,
-  max: 5,                    // ✅ Was 20 — way too high for local dev
-  min: 1,                    // Keep at least 1 connection alive
-  idleTimeoutMillis: 30000,  // Release idle connections after 30s
+  max: 5,
+  min: 1,
+  idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
 
@@ -18,7 +18,7 @@ pool.on("error", (err) => {
   console.error("⚠️ Unexpected database pool error:", err.message);
 });
 
-// ✅ FIX 2: Test connection and log clearly
+
 pool.connect((err, client, release) => {
   if (err) {
     console.error("❌ Database connection failed:", err.message);

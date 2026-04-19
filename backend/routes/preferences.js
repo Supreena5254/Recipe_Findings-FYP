@@ -4,7 +4,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// ✅ FIXED: Changed from POST to PUT
+//
 router.put("/", authMiddleware, async (req, res) => {
   const {
     diet_type,

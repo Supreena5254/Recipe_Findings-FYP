@@ -2,7 +2,7 @@ const Minio = require('minio');
 require('dotenv').config();
 const os = require('os');
 
-// ✅ Auto-detect current LAN IP — works on both WiFi and hotspot!
+
 const getLocalIP = () => {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -17,10 +17,9 @@ const getLocalIP = () => {
   return 'localhost';
 };
 
-// Backend connects to MinIO via localhost (same machine)
+
 const MINIO_HOST = process.env.MINIO_HOST || 'localhost';
 
-// ✅ Public IP auto-detected — no need to update .env when switching networks!
 const MINIO_PUBLIC_HOST = process.env.MINIO_PUBLIC_HOST || getLocalIP();
 
 const BUCKET_NAME = process.env.MINIO_BUCKET || 'recipe-images';
@@ -33,23 +32,19 @@ const minioClient = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin123',
 });
 
-// ✅ Build full image URL dynamically from just a filename
-// Called by recipeController when serving recipe data
 const buildImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
-  // Already a full URL (old data not yet migrated) — replace IP with current
+
   if (imageUrl.startsWith('http')) {
     // Extract just the filename from the old URL
     const filename = imageUrl.split('/').pop();
     return `http://${MINIO_PUBLIC_HOST}:9000/${BUCKET_NAME}/${filename}`;
   }
 
-  // Just a filename (new format) — build full URL
   return `http://${MINIO_PUBLIC_HOST}:9000/${BUCKET_NAME}/${imageUrl}`;
 };
 
-// Ensure bucket exists and is publicly readable
 const ensureBucket = async () => {
   try {
     const exists = await minioClient.bucketExists(BUCKET_NAME);

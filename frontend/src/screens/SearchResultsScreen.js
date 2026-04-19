@@ -11,16 +11,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import api from "../api/api";
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl"; // ✅ dynamic import
 
 export default function SearchResultsScreen({ route, navigation }) {
   const { query } = route.params;
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState(new Set());
-  // Track the displayed query separately so we can clear the HomeScreen field on back
-  const displayQuery = query || "";
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null); // ✅ inside component
 
   useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl); // ✅ fetch once on mount
     searchRecipes();
     fetchFavorites();
   }, [query]);
@@ -42,8 +43,6 @@ export default function SearchResultsScreen({ route, navigation }) {
 
       console.log("🔍 Searching for:", query);
 
-      // ✅ ULTIMATE FIX: Use the general /recipes endpoint with search parameter
-      // This searches in title, description, AND ingredients
       const searchUrl = `/recipes?search=${encodeURIComponent(query)}`;
       console.log("📡 API Call:", searchUrl);
 
@@ -63,7 +62,6 @@ export default function SearchResultsScreen({ route, navigation }) {
     try {
       const isFavorite = favorites.has(recipeId);
 
-      // Optimistic update
       const newFavorites = new Set(favorites);
       if (isFavorite) {
         newFavorites.delete(recipeId);
@@ -72,7 +70,6 @@ export default function SearchResultsScreen({ route, navigation }) {
       }
       setFavorites(newFavorites);
 
-      // API call
       if (isFavorite) {
         await api.delete(`/recipes/${recipeId}/favorite`);
       } else {
@@ -80,7 +77,6 @@ export default function SearchResultsScreen({ route, navigation }) {
       }
     } catch (error) {
       console.error("❌ Toggle favorite error:", error);
-      // Revert on error
       await fetchFavorites();
     }
   };
@@ -102,8 +98,9 @@ export default function SearchResultsScreen({ route, navigation }) {
   };
 
   const RecipeCard = ({ recipe }) => {
-    const imageUrl = recipe.image_url;
-    const hasImage = imageUrl && imageUrl.trim() !== '';
+    // ✅ uses dynamic minioBaseUrl — works on both WiFi and hotspot
+    const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, recipe.image_url) : null;
+    const hasImage = imageUrl !== null;
     const isFavorite = favorites.has(recipe.recipe_id);
 
     return (
@@ -111,7 +108,6 @@ export default function SearchResultsScreen({ route, navigation }) {
         style={styles.recipeCard}
         onPress={() => navigation.navigate("RecipeDetail", { recipeId: recipe.recipe_id })}
       >
-        {/* Image or Icon */}
         {hasImage ? (
           <Image
             source={{ uri: imageUrl }}
@@ -128,7 +124,6 @@ export default function SearchResultsScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Favorite heart button */}
         <TouchableOpacity
           style={styles.favoriteButton}
           onPress={(e) => {
@@ -176,7 +171,6 @@ export default function SearchResultsScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}

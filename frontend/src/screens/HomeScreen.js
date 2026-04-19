@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import api from "../api/api";
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl";
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 60) / 2;
@@ -24,14 +25,14 @@ export default function HomeScreen({ navigation }) {
   const [popularRecipes, setPopularRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // ✅ FIX 1: Track favorites as a Set of recipe_ids for efficient lookup
   const [favorites, setFavorites] = useState(new Set());
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null); // ✅ inside component
 
   useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl); // ✅ fetch dynamic MinIO URL
     fetchRecipes();
   }, []);
 
-  // ✅ FIX: Clear search field whenever the HomeScreen comes back into focus
   React.useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       setSearchQuery("");
@@ -43,15 +44,12 @@ export default function HomeScreen({ navigation }) {
     try {
       setLoading(true);
 
-      // ✅ FIX 2: Fetch user favorites first
       await fetchFavorites();
 
-      // ✅ FIX 2: Fetch recommended recipes based on USER PREFERENCES
       const recommendedResponse = await api.get("/recipes/recommended");
       const recipeData = recommendedResponse.data.recipes || recommendedResponse.data;
       setRecommendedRecipes(Array.isArray(recipeData) ? recipeData.slice(0, 6) : []);
 
-      // Fetch popular recipes (sorted by rating)
       const popularRes = await api.get("/recipes?sortBy=popularity");
       setPopularRecipes(Array.isArray(popularRes.data) ? popularRes.data.slice(0, 6) : []);
 
@@ -62,7 +60,6 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // ✅ FIX 1: Separate function to fetch favorites
   const fetchFavorites = async () => {
     try {
       const response = await api.get("/recipes/user/favorites");
@@ -72,7 +69,7 @@ export default function HomeScreen({ navigation }) {
       setFavorites(favoriteIds);
       console.log("✅ Favorites loaded:", Array.from(favoriteIds));
     } catch (error) {
-      console.log("⚠️ Could not fetch favorites (user may not be logged in):", error.response?.status);
+      console.log("⚠️ Could not fetch favorites:", error.response?.status);
       setFavorites(new Set());
     }
   };
@@ -89,12 +86,10 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // ✅ FIX 1: Properly toggle favorite with immediate UI update
   const toggleFavorite = async (recipeId) => {
     try {
       const isFavorite = favorites.has(recipeId);
 
-      // Optimistically update UI immediately
       const newFavorites = new Set(favorites);
       if (isFavorite) {
         newFavorites.delete(recipeId);
@@ -103,7 +98,6 @@ export default function HomeScreen({ navigation }) {
       }
       setFavorites(newFavorites);
 
-      // Make API call
       if (isFavorite) {
         await api.delete(`/recipes/${recipeId}/favorite`);
         console.log("💔 Removed from favorites:", recipeId);
@@ -114,7 +108,6 @@ export default function HomeScreen({ navigation }) {
 
     } catch (error) {
       console.error("❌ Error toggling favorite:", error);
-      // Revert on error
       await fetchFavorites();
     }
   };
@@ -135,10 +128,10 @@ export default function HomeScreen({ navigation }) {
     return iconMap[cuisineType] || "food";
   };
 
-  // ✅ FIX 1: Updated RecipeCard with working favorite toggle
   const RecipeCard = ({ recipe }) => {
-    const imageUrl = recipe.image_url;
-    const hasImage = imageUrl && imageUrl.trim() !== '';
+    // ✅ uses dynamic minioBaseUrl — works on both WiFi and hotspot
+    const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, recipe.image_url) : null;
+    const hasImage = imageUrl !== null;
     const isFavorite = favorites.has(recipe.recipe_id);
 
     return (
@@ -146,12 +139,12 @@ export default function HomeScreen({ navigation }) {
         style={styles.card}
         onPress={() => navigation.navigate("RecipeDetail", { recipeId: recipe.recipe_id })}
       >
-        {/* Image or Icon */}
         {hasImage ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.recipeImage}
-            onError={(e) => console.log('Image load error for recipe:', recipe.recipe_id)}
+            onError={() => console.log('❌ Image load error for recipe:', recipe.recipe_id, '| URL:', imageUrl)}
+            onLoad={() => console.log('✅ Image loaded for recipe:', recipe.recipe_id)}
           />
         ) : (
           <View style={styles.imageBox}>
@@ -163,17 +156,16 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* ✅ FIX 1: Working heart icon with proper favorite state */}
         <TouchableOpacity
           style={styles.heart}
           onPress={(e) => {
-            e.stopPropagation(); // Prevent card click
+            e.stopPropagation();
             toggleFavorite(recipe.recipe_id);
           }}
           activeOpacity={0.7}
         >
           <Feather
-            name={isFavorite ? "heart" : "heart"}
+            name="heart"
             size={16}
             color={isFavorite ? "#ef4444" : "#999"}
             fill={isFavorite ? "#ef4444" : "none"}
@@ -289,27 +281,23 @@ export default function HomeScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoriesContainer}
         >
-          {categories.map((cat, index) => {
-            const categoryColor = "#4ade80";
-
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[styles.categoryCard, { backgroundColor: categoryColor }]}
-                onPress={() => {
-                  if (cat.mealType) {
-                    navigation.navigate("CategoryRecipes", {
-                      category: cat.mealType,
-                      type: "mealType"
-                    });
-                  }
-                }}
-              >
-                <Feather name={cat.icon} size={22} color="#FFF" />
-                <Text style={styles.categoryLabel}>{cat.name}</Text>
-              </TouchableOpacity>
-            );
-          })}
+          {categories.map((cat, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.categoryCard, { backgroundColor: "#4ade80" }]}
+              onPress={() => {
+                if (cat.mealType) {
+                  navigation.navigate("CategoryRecipes", {
+                    category: cat.mealType,
+                    type: "mealType"
+                  });
+                }
+              }}
+            >
+              <Feather name={cat.icon} size={22} color="#FFF" />
+              <Text style={styles.categoryLabel}>{cat.name}</Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
 
         {/* Recommended Section */}

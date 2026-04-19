@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,10 +14,12 @@ import {
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import api from "../api/api";
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl";
 
 const { width } = Dimensions.get('window');
 
 export default function IngredientSearchScreen({ navigation }) {
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null);
   const [screenState, setScreenState] = useState('initial');
   const [ingredientInput, setIngredientInput] = useState("");
   const [ingredients, setIngredients] = useState([]);
@@ -29,6 +31,10 @@ export default function IngredientSearchScreen({ navigation }) {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [expandedRecipes, setExpandedRecipes] = useState([]);
+
+  useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl);
+  }, []);
 
   const addIngredient = () => {
     if (ingredientInput.trim()) {
@@ -426,7 +432,7 @@ export default function IngredientSearchScreen({ navigation }) {
               <Text style={styles.sectionTitle}>Meal Type</Text>
             </View>
             <View style={styles.chipsContainer}>
-              {['Breakfast', 'Lunch', 'Dinner', 'Snack'].map((meal) => (
+              {['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Drinks', 'Dessert', 'Soup'].map((meal) => (
                 <TouchableOpacity
                   key={meal}
                   style={[
@@ -480,7 +486,7 @@ export default function IngredientSearchScreen({ navigation }) {
               <Text style={styles.sectionTitle}>Cuisine</Text>
             </View>
             <View style={styles.chipsContainer}>
-              {['Nepali', 'Indian', 'Chinese', 'Italian', 'Thai', 'American'].map((type) => (
+              {['Nepali', 'Indian', 'Chinese', 'Italian', 'Thai', 'American', 'International', 'Continental'].map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[
@@ -583,6 +589,7 @@ export default function IngredientSearchScreen({ navigation }) {
             const missingIngredients = getMissingIngredients(recipe);
             const isExpanded = expandedRecipes.includes(recipe.recipe_id);
             const matchColor = getMatchColor(recipe.matchPercentage);
+            const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, recipe.image_url) : null;
 
             return (
               <View key={recipe.recipe_id} style={styles.resultCard}>
@@ -591,11 +598,13 @@ export default function IngredientSearchScreen({ navigation }) {
                   <Text style={styles.matchLabel}>Match</Text>
                 </View>
 
-                {recipe.image_url ? (
+                {imageUrl ? (
                   <Image
-                    source={{ uri: recipe.image_url }}
+                    source={{ uri: imageUrl }}
                     style={styles.resultImage}
                     resizeMode="cover"
+                    onError={() => console.log('❌ Image load error:', recipe.recipe_id)}
+                    onLoad={() => console.log('✅ Image loaded:', recipe.recipe_id)}
                   />
                 ) : (
                   <View style={styles.resultImagePlaceholder}>

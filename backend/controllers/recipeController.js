@@ -296,7 +296,7 @@ exports.getAllRecipes = async (req, res) => {
     let paramIndex = 2;
     let whereConditions = [];
 
-    // ✅ FIX 1: Add mealType filter
+
     if (mealType && mealType.trim()) {
       whereConditions.push(`r.meal_type = $${paramIndex}`);
       params.push(mealType.trim());
@@ -304,7 +304,7 @@ exports.getAllRecipes = async (req, res) => {
       paramIndex++;
     }
 
-    // ✅ FIX 2: Add cuisine filter
+
     if (cuisine && cuisine.trim()) {
       whereConditions.push(`r.cuisine_type = $${paramIndex}`);
       params.push(cuisine.trim());
@@ -312,7 +312,7 @@ exports.getAllRecipes = async (req, res) => {
       paramIndex++;
     }
 
-    // ✅ FIX 3: Add search filter if provided
+
     if (search && search.trim()) {
       whereConditions.push(`(
         LOWER(r.title) LIKE $${paramIndex} OR
@@ -324,7 +324,7 @@ exports.getAllRecipes = async (req, res) => {
       paramIndex++;
     }
 
-    // ✅ FIX 4: Build WHERE clause from conditions array
+
     let whereClause = '';
     if (whereConditions.length > 0) {
       whereClause = `WHERE ${whereConditions.join(' AND ')}`;

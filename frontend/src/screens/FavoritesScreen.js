@@ -14,6 +14,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import api from "../api/api";
+import { getMinioBaseUrl, buildImageUrl } from "../utils/imageUrl"; // ✅ dynamic import
 
 export default function FavoritesScreen({ navigation }) {
   const [favorites, setFavorites] = useState([]);
@@ -21,6 +22,11 @@ export default function FavoritesScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [minioBaseUrl, setMinioBaseUrl] = useState(null); // ✅ inside component
+
+  useEffect(() => {
+    getMinioBaseUrl().then(setMinioBaseUrl); // ✅ fetch once on mount
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -59,20 +65,14 @@ export default function FavoritesScreen({ navigation }) {
     setRefreshing(false);
   };
 
-  // ✅ FIX 1: Properly toggle favorite with UI update
   const toggleFavorite = async (recipeId) => {
     try {
-      // Optimistically remove from UI
       const newFavorites = favorites.filter((recipe) => recipe.recipe_id !== recipeId);
       setFavorites(newFavorites);
-
-      // Make API call
       await api.post(`/recipes/${recipeId}/favorite`);
       console.log("💔 Removed from favorites:", recipeId);
-
     } catch (error) {
       console.error("❌ Error toggling favorite:", error);
-      // Revert on error
       await fetchFavorites();
     }
   };
@@ -94,8 +94,9 @@ export default function FavoritesScreen({ navigation }) {
   };
 
   const RecipeCard = ({ recipe }) => {
-    const imageUrl = recipe.image_url;
-    const hasImage = imageUrl && imageUrl.trim() !== '';
+    // ✅ uses dynamic minioBaseUrl — works on both WiFi and hotspot
+    const imageUrl = minioBaseUrl ? buildImageUrl(minioBaseUrl, recipe.image_url) : null;
+    const hasImage = imageUrl !== null;
 
     return (
       <TouchableOpacity
@@ -104,12 +105,12 @@ export default function FavoritesScreen({ navigation }) {
           navigation.navigate("RecipeDetail", { recipeId: recipe.recipe_id })
         }
       >
-        {/* Image or Icon */}
         {hasImage ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.recipeImage}
-            onError={(e) => console.log('Image load error for recipe:', recipe.recipe_id)}
+            onError={() => console.log('❌ Image load error for recipe:', recipe.recipe_id, '| URL:', imageUrl)}
+            onLoad={() => console.log('✅ Image loaded:', recipe.recipe_id)}
           />
         ) : (
           <View style={styles.imageBox}>
@@ -121,7 +122,6 @@ export default function FavoritesScreen({ navigation }) {
           </View>
         )}
 
-        {/* ✅ FIX 1: Heart icon is ALWAYS filled red in favorites page */}
         <TouchableOpacity
           style={styles.heart}
           onPress={(e) => {

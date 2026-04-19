@@ -1,10 +1,10 @@
 const pool = require("../config/db");
 
-// ✅ FIXED: Proper rating calculation with weighted average
+
 const addOrUpdateRating = async (req, res) => {
   const { recipeId } = req.params;
-  const { rating, comment, reviewText } = req.body;  // ✅ FIX: accept both field names
-  const reviewComment = comment || reviewText || null; // ✅ use whichever is provided
+  const { rating, comment, reviewText } = req.body;
+  const reviewComment = comment || reviewText || null;
   const userId = req.user.id;
 
   // Validate rating
@@ -40,7 +40,7 @@ const addOrUpdateRating = async (req, res) => {
       );
     }
 
-    // ✅ FIXED: Calculate proper weighted average rating
+
     await updateRecipeRating(recipeId);
 
     res.status(200).json({
@@ -55,7 +55,7 @@ const addOrUpdateRating = async (req, res) => {
   }
 };
 
-// ✅ Helper function to calculate and update recipe's average rating
+
 const updateRecipeRating = async (recipeId) => {
   try {
     const result = await pool.query(
@@ -70,7 +70,7 @@ const updateRecipeRating = async (recipeId) => {
     const avgRating = parseFloat(result.rows[0].avg_rating) || 0;  // ✅ FIX: parse to float
     const ratingCount = parseInt(result.rows[0].rating_count) || 0;
 
-    // ✅ FIX: Cast $1 to numeric explicitly to prevent integer column truncation
+
     await pool.query(
       `UPDATE recipes
        SET rating = $1::numeric,
@@ -86,11 +86,9 @@ const updateRecipeRating = async (recipeId) => {
   }
 };
 
-// ✅ FIXED: Get all ratings for a recipe - returns stats + userRating for current user
 const getRecipeRatings = async (req, res) => {
   const { recipeId } = req.params;
 
-  // Get the current user's ID from the token (works if optionalAuth middleware is used)
   const userId = req.user?.id || null;
 
   try {
@@ -124,7 +122,6 @@ const getRecipeRatings = async (req, res) => {
       [recipeId]
     );
 
-    // ✅ FIX: Get the current user's own rating so the modal shows "Your Rating"
     let userRating = null;
     if (userId) {
       const userRatingResult = await pool.query(
@@ -136,8 +133,8 @@ const getRecipeRatings = async (req, res) => {
 
     res.status(200).json({
       ratings: result.rows,
-      stats: statsResult.rows[0],  // ✅ FIX: was "statistics", now "stats" to match frontend
-      userRating,                   // ✅ FIX: newly added so frontend knows if user already rated
+      stats: statsResult.rows[0],
+      userRating,
     });
   } catch (error) {
     console.error("❌ Error fetching ratings:", error);
@@ -183,7 +180,6 @@ const deleteRating = async (req, res) => {
       return res.status(404).json({ message: "Rating not found" });
     }
 
-    // ✅ Recalculate recipe rating after deletion
     await updateRecipeRating(recipeId);
 
     res.status(200).json({ message: "Rating deleted successfully" });
