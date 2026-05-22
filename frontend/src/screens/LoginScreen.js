@@ -47,15 +47,29 @@ export default function LoginScreen({ navigation }) {
         email: email.trim(),
         password,
       });
-      await AsyncStorage.setItem("authToken", response.data.token);
-      await AsyncStorage.setItem("userId", response.data.user.id.toString());
-      await AsyncStorage.setItem("userEmail", response.data.user.email);
+
+      const { token, user } = response.data;
+
+      // Save token and user info
+      await AsyncStorage.setItem("authToken", token);
+      await AsyncStorage.setItem("userId", user.id.toString());
+      await AsyncStorage.setItem("userEmail", user.email);
+      await AsyncStorage.setItem("authUser", JSON.stringify(user));
+
+      // ✅ ADMIN CHECK FIRST — before anything else
+      if (user.is_admin) {
+        navigation.reset({ index: 0, routes: [{ name: "AdminPanel" }] });
+        return;
+      }
+
+      // Normal user → check preferences
       try {
         const profileResponse = await api.get("/auth/profile");
         const hasPreferences =
           profileResponse.data.user.diet_type !== null ||
           profileResponse.data.user.skill_level !== null ||
           profileResponse.data.user.meal_goal !== null;
+
         if (hasPreferences) {
           await AsyncStorage.setItem("preferences_completed", "true");
           navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });

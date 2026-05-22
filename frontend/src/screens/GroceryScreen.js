@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Animated,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,8 +17,8 @@ import api from "../api/api";
 export default function GroceryScreen() {
   const [groceryList, setGroceryList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
 
-  // Load grocery list when screen is focused
   useFocusEffect(
     React.useCallback(() => {
       loadGroceryList();
@@ -28,7 +29,6 @@ export default function GroceryScreen() {
     try {
       setLoading(true);
       const response = await api.get("/grocery");
-      console.log("✅ Grocery list loaded:", response.data);
       setGroceryList(response.data);
     } catch (error) {
       console.error("❌ Error loading grocery list:", error);
@@ -38,15 +38,16 @@ export default function GroceryScreen() {
     }
   };
 
+  const toggleExpand = (groceryId) => {
+    setExpandedId(prev => prev === groceryId ? null : groceryId);
+  };
+
   const toggleIngredient = async (groceryId, ingredientIndex) => {
     try {
       const response = await api.put(`/grocery/toggle/${groceryId}`, {
-        ingredientIndex
+        ingredientIndex,
       });
 
-      console.log("✅ Ingredient toggled:", response.data);
-
-      // Update local state
       setGroceryList(prevList =>
         prevList.map(item =>
           item.grocery_id === groceryId
@@ -55,7 +56,6 @@ export default function GroceryScreen() {
         )
       );
 
-      // Check if all ingredients are checked
       const updatedItem = response.data.groceryItem;
       const allChecked = updatedItem.ingredients.every(ing => ing.checked);
 
@@ -66,16 +66,12 @@ export default function GroceryScreen() {
             `All ingredients for "${updatedItem.recipe_name}" are checked. Remove from list?`,
             [
               { text: "Keep It", style: "cancel" },
-              {
-                text: "Remove",
-                onPress: () => deleteGroceryItem(groceryId),
-              },
+              { text: "Remove", onPress: () => deleteGroceryItem(groceryId) },
             ]
           );
         }, 300);
       }
     } catch (error) {
-      console.error("Error toggling ingredient:", error);
       Alert.alert("Error", "Failed to update ingredient");
     }
   };
@@ -83,137 +79,125 @@ export default function GroceryScreen() {
   const deleteGroceryItem = async (groceryId) => {
     try {
       await api.delete(`/grocery/${groceryId}`);
-      console.log("✅ Grocery item deleted");
-      setGroceryList(prevList => prevList.filter(item => item.grocery_id !== groceryId));
+      setGroceryList(prev => prev.filter(item => item.grocery_id !== groceryId));
+      if (expandedId === groceryId) setExpandedId(null);
     } catch (error) {
-      console.error("Error deleting grocery item:", error);
       Alert.alert("Error", "Failed to delete item");
     }
   };
 
   const confirmDeleteItem = (groceryId, recipeName) => {
     Alert.alert(
-      "Delete Recipe",
+      "Remove Recipe",
       `Remove "${recipeName}" from your grocery list?`,
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteGroceryItem(groceryId),
-        },
+        { text: "Remove", style: "destructive", onPress: () => deleteGroceryItem(groceryId) },
       ]
     );
   };
 
-  const clearAllGroceryList = async () => {
-    Alert.alert(
-      "Clear All",
-      "Remove all recipes from your grocery list?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.delete("/grocery");
-              console.log("✅ Grocery list cleared");
-              setGroceryList([]);
-            } catch (error) {
-              console.error("Error clearing grocery list:", error);
-              Alert.alert("Error", "Failed to clear list");
-            }
-          },
+  const clearAll = () => {
+    Alert.alert("Clear All", "Remove all recipes from your grocery list?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.delete("/grocery");
+            setGroceryList([]);
+            setExpandedId(null);
+          } catch {
+            Alert.alert("Error", "Failed to clear list");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const RecipeSection = ({ item }) => {
+  const RecipeRow = ({ item }) => {
+    const isExpanded = expandedId === item.grocery_id;
     const checkedCount = item.ingredients.filter(ing => ing.checked).length;
     const totalCount = item.ingredients.length;
     const allChecked = checkedCount === totalCount;
+    const progress = totalCount > 0 ? checkedCount / totalCount : 0;
 
     return (
-      <View style={styles.section}>
-        {/* Recipe Header */}
-        <View style={styles.recipeHeader}>
-          <View style={styles.recipeHeaderLeft}>
-            <Text style={styles.recipeName}>{item.recipe_name}</Text>
-            <Text style={styles.progressText}>
-              {checkedCount} / {totalCount} items
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => confirmDeleteItem(item.grocery_id, item.recipe_name)}
-          >
-            <Feather name="trash-2" size={20} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Progress Bar */}
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${(checkedCount / totalCount) * 100}%` }
-            ]}
-          />
-        </View>
-
-        {/* Ingredients List */}
-        {item.ingredients.map((ingredient, ingredientIndex) => (
-          <TouchableOpacity
-            key={ingredientIndex}
-            style={styles.ingredientRow}
-            onPress={() => toggleIngredient(item.grocery_id, ingredientIndex)}
-          >
-            <View style={styles.ingredientContent}>
-              <View style={styles.checkboxContainer}>
-                <View
-                  style={[
-                    styles.checkbox,
-                    ingredient.checked && styles.checkboxChecked,
-                  ]}
-                >
-                  {ingredient.checked && (
-                    <Feather name="check" size={16} color="#FFF" />
-                  )}
-                </View>
-              </View>
-
-              {/* Ingredient name */}
-              <Text
-                style={[
-                  styles.ingredientName,
-                  ingredient.checked && styles.ingredientNameChecked,
-                ]}
-              >
-                {ingredient.name}
+      <View style={styles.recipeCard}>
+        {/* Recipe Row — tap to expand */}
+        <TouchableOpacity
+          style={styles.recipeRow}
+          onPress={() => toggleExpand(item.grocery_id)}
+          activeOpacity={0.7}
+        >
+          {/* Left: name */}
+          <View style={styles.recipeLeft}>
+            <View>
+              <Text style={styles.recipeName}>{item.recipe_name}</Text>
+              <Text style={styles.recipeCount}>
+                {checkedCount}/{totalCount} items
               </Text>
-
-              {/* Quantity on the right */}
-              {ingredient.quantity && (
-                <Text
-                  style={[
-                    styles.quantityText,
-                    ingredient.checked && styles.quantityTextChecked
-                  ]}
-                >
-                  {ingredient.quantity}
-                </Text>
-              )}
             </View>
-          </TouchableOpacity>
-        ))}
+          </View>
 
-        {/* All Checked Badge */}
-        {allChecked && (
-          <View style={styles.completedBadge}>
-            <Feather name="check-circle" size={16} color="#27AE60" />
-            <Text style={styles.completedText}>All items collected!</Text>
+          {/* Right: progress pill + chevron + delete */}
+          <View style={styles.recipeRight}>
+            <View style={styles.progressPill}>
+              <View
+                style={[
+                  styles.progressPillFill,
+                  { width: `${progress * 100}%` },
+                  allChecked && styles.progressPillDone,
+                ]}
+              />
+            </View>
+            <Feather
+              name={isExpanded ? "chevron-up" : "chevron-down"}
+              size={18}
+              color="#aaa"
+              style={{ marginHorizontal: 6 }}
+            />
+            <TouchableOpacity
+              onPress={() => confirmDeleteItem(item.grocery_id, item.recipe_name)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Feather name="trash-2" size={16} color="#ef4444" />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+
+        {/* Expanded ingredient list */}
+        {isExpanded && (
+          <View style={styles.ingredientList}>
+            <View style={styles.divider} />
+            {item.ingredients.map((ingredient, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={styles.ingredientRow}
+                onPress={() => toggleIngredient(item.grocery_id, idx)}
+                activeOpacity={0.6}
+              >
+                <View style={[styles.checkbox, ingredient.checked && styles.checkboxChecked]}>
+                  {ingredient.checked && <Feather name="check" size={13} color="#fff" />}
+                </View>
+                <Text style={[styles.ingredientName, ingredient.checked && styles.ingredientDone]}>
+                  {ingredient.name}
+                </Text>
+                {ingredient.quantity ? (
+                  <Text style={[styles.quantity, ingredient.checked && styles.quantityDone]}>
+                    {ingredient.quantity}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+
+            {allChecked && (
+              <View style={styles.doneBadge}>
+                <Feather name="check-circle" size={14} color="#16a34a" />
+                <Text style={styles.doneText}>All items collected!</Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -223,7 +207,7 @@ export default function GroceryScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
+        <View style={styles.centered}>
           <ActivityIndicator size="large" color="#16a34a" />
           <Text style={styles.loadingText}>Loading grocery list...</Text>
         </View>
@@ -242,35 +226,27 @@ export default function GroceryScreen() {
           </Text>
         </View>
         {groceryList.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearAllButton}
-            onPress={clearAllGroceryList}
-          >
-            <Feather name="trash-2" size={20} color="#ef4444" />
+          <TouchableOpacity style={styles.clearBtn} onPress={clearAll}>
+            <Feather name="trash-2" size={18} color="#ef4444" />
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {groceryList.length > 0 ? (
-          <>
-            {groceryList.map((item) => (
-              <RecipeSection
-                key={item.grocery_id}
-                item={item}
-              />
-            ))}
-            <View style={{ height: 40 }} />
-          </>
+          groceryList.map(item => (
+            <RecipeRow key={item.grocery_id} item={item} />
+          ))
         ) : (
-          <View style={styles.emptyState}>
-            <Feather name="shopping-cart" size={80} color="#E0E0E0" />
-            <Text style={styles.emptyTitle}>Your grocery list is empty</Text>
+          <View style={styles.empty}>
+            <Feather name="shopping-cart" size={70} color="#d1fae5" />
+            <Text style={styles.emptyTitle}>Your list is empty</Text>
             <Text style={styles.emptySubtitle}>
-              Add ingredients from recipe details to start your list
+              Add ingredients from a recipe to get started
             </Text>
           </View>
         )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -281,75 +257,38 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f0fdf4",
   },
-  loadingContainer: {
+  centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
+    marginTop: 12,
+    fontSize: 15,
     color: "#666",
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
-    backgroundColor: "#FFF",
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    borderBottomColor: "#e5f7ed",
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#2C3E50",
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#1a2e1a",
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#95A5A6",
-    marginTop: 4,
-  },
-  clearAllButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#fee2e2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  section: {
-    backgroundColor: "#FFF",
-    marginHorizontal: 20,
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  recipeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  recipeHeaderLeft: {
-    flex: 1,
-  },
-  recipeName: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2C3E50",
-    marginBottom: 4,
-  },
-  progressText: {
     fontSize: 13,
-    color: "#95A5A6",
+    color: "#86a892",
+    marginTop: 2,
   },
-  deleteButton: {
+  clearBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -357,94 +296,162 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  progressBar: {
-    height: 6,
-    backgroundColor: "#F0F0F0",
-    borderRadius: 3,
-    marginBottom: 16,
+  scroll: {
+    padding: 16,
+  },
+
+  // Recipe card
+  recipeCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    marginBottom: 12,
     overflow: "hidden",
+    shadowColor: "#16a34a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#27AE60",
-    borderRadius: 3,
-  },
-  ingredientRow: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F5F5F5",
-  },
-  ingredientContent: {
+  recipeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  checkboxContainer: {
-    marginRight: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#E0E0E0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  checkboxChecked: {
-    backgroundColor: "#27AE60",
-    borderColor: "#27AE60",
-  },
-  ingredientName: {
-    fontSize: 15,
-    color: "#2C3E50",
-    flex: 1,
-  },
-  ingredientNameChecked: {
-    color: "#95A5A6",
-    textDecorationLine: "line-through",
-  },
-  quantityText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#16a34a",
-    marginLeft: 12,
-  },
-  quantityTextChecked: {
-    color: "#95A5A6",
-    textDecorationLine: "line-through",
-  },
-  completedBadge: {
+  recipeLeft: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E8F8F0",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 12,
-    gap: 8,
+    flex: 1,
+    gap: 12,
   },
-  completedText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#27AE60",
-  },
-  emptyState: {
-    alignItems: "center",
+  recipeIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#dcfce7",
     justifyContent: "center",
-    paddingVertical: 100,
+    alignItems: "center",
+  },
+  recipeIconBoxDone: {
+    backgroundColor: "#16a34a",
+  },
+  recipeName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1a2e1a",
+    marginBottom: 2,
+  },
+  recipeCount: {
+    fontSize: 12,
+    color: "#86a892",
+  },
+  recipeRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  progressPill: {
+    width: 40,
+    height: 6,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressPillFill: {
+    height: "100%",
+    backgroundColor: "#16a34a",
+    borderRadius: 3,
+  },
+  progressPillDone: {
+    backgroundColor: "#16a34a",
+  },
+
+  // Divider
+  divider: {
+    height: 1,
+    backgroundColor: "#f0fdf4",
+    marginHorizontal: 16,
+    marginBottom: 4,
+  },
+
+  // Ingredients
+  ingredientList: {
+    paddingBottom: 8,
+  },
+  ingredientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f9fafb",
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  checkboxChecked: {
+    backgroundColor: "#16a34a",
+    borderColor: "#16a34a",
+  },
+  ingredientName: {
+    flex: 1,
+    fontSize: 15,
+    color: "#374151",
+  },
+  ingredientDone: {
+    color: "#9ca3af",
+    textDecorationLine: "line-through",
+  },
+  quantity: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#16a34a",
+    marginLeft: 8,
+  },
+  quantityDone: {
+    color: "#9ca3af",
+    textDecorationLine: "line-through",
+  },
+  doneBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    margin: 12,
+    padding: 10,
+    backgroundColor: "#f0fdf4",
+    borderRadius: 8,
+  },
+  doneText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#16a34a",
+  },
+
+  // Empty state
+  empty: {
+    alignItems: "center",
+    paddingTop: 100,
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
     color: "#2C3E50",
-    marginTop: 24,
+    marginTop: 20,
     marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: "#95A5A6",
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 20,
   },
 });

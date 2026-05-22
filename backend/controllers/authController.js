@@ -241,6 +241,7 @@ exports.loginUser = async (req, res) => {
         full_name: userData.full_name,
         username: userData.username,
         email: userData.email,
+        is_admin: userData.is_admin,
       },
     });
   } catch (err) {

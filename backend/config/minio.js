@@ -2,24 +2,36 @@ const Minio = require('minio');
 require('dotenv').config();
 const os = require('os');
 
-
 const getLocalIP = () => {
   const interfaces = os.networkInterfaces();
+
+  // ✅ Skip these virtual/internal adapters
+  const skipKeywords = ['wsl', 'virtual', 'vethernet', 'loopback', 'bluetooth', 'vmware', 'hyper-v'];
+
   for (const name of Object.keys(interfaces)) {
+    const nameLower = name.toLowerCase();
+
+    // Skip virtual adapters
+    if (skipKeywords.some(keyword => nameLower.includes(keyword))) {
+      console.log(`⏭️ Skipping virtual adapter: ${name}`);
+      continue;
+    }
+
     for (const iface of interfaces[name]) {
-      // Skip internal (127.x.x.x) and non-IPv4
+      // Only real IPv4, non-internal addresses
       if (iface.family === 'IPv4' && !iface.internal) {
-        console.log(`🌐 Detected network interface: ${name} → ${iface.address}`);
+        console.log(`🌐 Selected network interface: ${name} → ${iface.address}`);
         return iface.address;
       }
     }
   }
+
   return 'localhost';
 };
 
-
 const MINIO_HOST = process.env.MINIO_HOST || 'localhost';
 
+// ✅ Uses env var if set, otherwise auto-detects skipping WSL/virtual adapters
 const MINIO_PUBLIC_HOST = process.env.MINIO_PUBLIC_HOST || getLocalIP();
 
 const BUCKET_NAME = process.env.MINIO_BUCKET || 'recipe-images';
@@ -35,9 +47,7 @@ const minioClient = new Minio.Client({
 const buildImageUrl = (imageUrl) => {
   if (!imageUrl) return null;
 
-
   if (imageUrl.startsWith('http')) {
-    // Extract just the filename from the old URL
     const filename = imageUrl.split('/').pop();
     return `http://${MINIO_PUBLIC_HOST}:9000/${BUCKET_NAME}/${filename}`;
   }

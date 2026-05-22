@@ -6,11 +6,11 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// ✅ MIDDLEWARE FIRST
 app.use(cors({
   origin: '*',
   credentials: true,
 }));
-
 app.use(express.json());
 
 // Serve static files (images)
@@ -40,8 +40,9 @@ app.get("/api/config", (req, res) => {
   });
 });
 
-// Import routes
+// ✅ ROUTES AFTER MIDDLEWARE
 console.log("📦 Loading routes...");
+
 const authRoutes = require("./routes/auth");
 console.log("✅ Auth routes loaded");
 
@@ -60,12 +61,13 @@ console.log("✅ Upload routes loaded");
 const activityRoutes = require("./routes/activity");
 console.log("✅ Activity routes loaded");
 
-// ⚠️ This is where it might fail
+const adminRoutes = require("./routes/admin");
+console.log("✅ Admin routes loaded");
+
 try {
   const groceryRoutes = require("./routes/grocery");
   console.log("✅ Grocery routes loaded");
 
-  // Use routes
   app.use("/api/auth", authRoutes);
   app.use("/api/preferences", preferenceRoutes);
   app.use("/api/recipes", recipeRoutes);
@@ -73,6 +75,7 @@ try {
   app.use("/api/ratings", ratingRoutes);
   app.use("/api/upload", uploadRoutes);
   app.use("/api/activity", activityRoutes);
+  app.use("/api/admin", adminRoutes);   // ✅ added here
 
   console.log("✅ All routes registered!");
 } catch (error) {

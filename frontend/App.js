@@ -14,6 +14,9 @@ import RecipeDetailScreen from "./src/screens/RecipeDetailScreen";
 import SearchResultsScreen from "./src/screens/SearchResultsScreen";
 import CategoryRecipesScreen from "./src/screens/CategoryRecipesScreen";
 
+// ✅ Import your Admin Panel screen
+import AdminPanel from "./src/screens/Adminpanel";
+
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -35,6 +38,9 @@ export default function App() {
 
         {/* Preferences (first-time only) */}
         <Stack.Screen name="PreferenceForm" component={PreferenceFormScreen} />
+
+        {/* ✅ Admin Panel — only reachable if user.is_admin === true */}
+        <Stack.Screen name="AdminPanel" component={AdminPanel} />
 
         {/* Main App */}
         <Stack.Screen name="MainTabs" component={MainTabs} />

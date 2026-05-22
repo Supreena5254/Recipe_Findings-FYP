@@ -9,8 +9,7 @@ export const getMinioBaseUrl = async () => {
     cachedMinioBaseUrl = response.data.minioBaseUrl;
     return cachedMinioBaseUrl;
   } catch (e) {
-    // fallback — same host as API but port 9000
-    const apiBase = api.defaults.baseURL; // e.g. http://192.168.x.x:4000/api
+    const apiBase = api.defaults.baseURL;
     const host = apiBase.split(":")[1].replace("//", "");
     cachedMinioBaseUrl = `http://${host}:9000/recipe-images`;
     return cachedMinioBaseUrl;
@@ -19,10 +18,21 @@ export const getMinioBaseUrl = async () => {
 
 export const buildImageUrl = (baseUrl, imageUrl) => {
   if (!imageUrl || !baseUrl) return null;
+
+  // Extract just the filename if it's a full URL
   const filename = imageUrl.startsWith("http")
     ? imageUrl.split("/").pop()
     : imageUrl.trim();
-  const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
-  const ext = filename.split(".").pop();
-  return `${baseUrl}/recipe-${nameWithoutExt}.${ext}`;
+
+  // If already has recipe- prefix (e.g. "recipe-94.jpg"), use as-is
+  if (filename.startsWith("recipe-")) {
+    const url = `${baseUrl}/${filename}`;
+    console.log("🖼️ Image URL:", url);
+    return url;
+  }
+
+  // If it's just a number like "94.jpg" → convert to "recipe-94.jpg"
+  const url = `${baseUrl}/recipe-${filename}`;
+  console.log("🖼️ Image URL:", url);
+  return url;
 };
