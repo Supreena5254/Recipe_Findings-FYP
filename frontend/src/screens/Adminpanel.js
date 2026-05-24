@@ -6,32 +6,62 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import api from "../api/api";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { getMinioBaseUrl, buildImageUrl as buildUrl } from "../utils/imageUrl";
 
 // ─── COLORS ──────────────────────────────────────────────
 const C = {
   green: "#16a34a",
   greenDark: "#15803d",
-  greenLight: "#dcfce7",
+  greenLight: "#f0fdf4",
+  greenBorder: "#bbf7d0",
   greenMid: "#86efac",
-  bg: "#f0fdf4",
+  bg: "#f0fdf4",       // ✅ restored light green background
   white: "#ffffff",
-  gray: "#6b7280",
-  grayLight: "#f9fafb",
-  border: "#d1fae5",
+  gray: "#94a3b8",
+  grayLight: "#dcfce7",
+  border: "#d1fae5",   // ✅ green-tinted border like original
   red: "#dc2626",
-  redLight: "#fee2e2",
-  text: "#111827",
-  textSub: "#6b7280",
-  yellow: "#f59e0b",
+  redLight: "#fef2f2",
+  redBorder: "#fecaca",
+  text: "#0f172a",
+  textSub: "#64748b",
+  yellow: "#d97706",
+  yellowLight: "#fffbeb",
   card: "#ffffff",
-  blue: "#3b82f6",
+  blue: "#2563eb",
   blueLight: "#eff6ff",
+  blueBorder: "#bfdbfe",
   purple: "#7c3aed",
-  purpleLight: "#ede9fe",
-  orange: "#ea580c",
-  orangeLight: "#fff7ed",
+  purpleLight: "#f5f3ff",
+};
+
+// ─── HELPERS ─────────────────────────────────────────────
+// useImageUrl: resolves a stored imageUrl value to a full HTTP URL.
+// Handles all 3 formats stored in DB:
+//   "152.jpg"           → recipe-152.jpg  (old numeric)
+//   "recipe-uuid.jpg"   → recipe-uuid.jpg (new uuid, already prefixed)
+//   "http://old-ip/..."  → strips old IP, applies prefix logic above
+// Uses your imageUrl.js util which caches the MinIO base URL.
+const useImageUrl = (imageUrl) => {
+  const [resolvedUrl, setResolvedUrl] = React.useState(null);
+  React.useEffect(() => {
+    if (!imageUrl) { setResolvedUrl(null); return; }
+    getMinioBaseUrl().then(base => {
+      setResolvedUrl(buildUrl(base, imageUrl));
+    });
+  }, [imageUrl]);
+  return resolvedUrl;
+};
+
+// Sync version for cases where we already have the base URL cached
+// (first call may return null until resolved)
+let _cachedBase = null;
+getMinioBaseUrl().then(b => { _cachedBase = b; });
+const buildImageUrl = (imageUrl) => {
+  if (!imageUrl || !_cachedBase) return null;
+  return buildUrl(_cachedBase, imageUrl);
 };
 
 const difficulties = ["Beginner", "Intermediate", "Advanced"];
@@ -40,9 +70,9 @@ const dietPrefs = ["Veg", "Non-Veg", "Vegan"];
 const cuisines = ["Nepali", "Indian", "Chinese", "Italian", "Continental", "International", "Other"];
 
 const diffColor = {
-  Beginner: C.green,
-  Intermediate: C.yellow,
-  Advanced: C.red,
+  Beginner:     { text: C.green,  bg: C.greenLight,  border: C.greenBorder },
+  Intermediate: { text: C.yellow, bg: C.yellowLight,  border: "#fde68a" },
+  Advanced:     { text: C.red,    bg: C.redLight,    border: C.redBorder },
 };
 
 const EMPTY_RECIPE = {
@@ -53,27 +83,42 @@ const EMPTY_RECIPE = {
   allergens: "", image_url: "", servings: "2",
 };
 
+const formatDate = (d) =>
+  d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
+
 // ─── BADGE ───────────────────────────────────────────────
 function Badge({ label, color }) {
+  const dc = diffColor[label];
+  if (dc) {
+    return (
+      <View style={[styles.badge, { backgroundColor: dc.bg, borderColor: dc.border }]}>
+        <Text style={[styles.badgeText, { color: dc.text }]}>{label}</Text>
+      </View>
+    );
+  }
   return (
-    <View style={[styles.badge, { backgroundColor: color + "22" }]}>
-      <Text style={[styles.badgeText, { color }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: (color || C.gray) + "18", borderColor: (color || C.gray) + "40" }]}>
+      <Text style={[styles.badgeText, { color: color || C.gray }]}>{label}</Text>
     </View>
   );
 }
 
-// ─── STAT CARD (now tappable) ────────────────────────────
-function StatCard({ icon, label, value, color, onPress }) {
+// ─── STAT CARD ───────────────────────────────────────────
+function StatCard({ label, value, color, icon, onPress }) {
   return (
     <TouchableOpacity
-      style={[styles.statCard, onPress && styles.statCardTappable]}
+      style={styles.statCard}
       onPress={onPress}
-      activeOpacity={onPress ? 0.75 : 1}
+      activeOpacity={onPress ? 0.7 : 1}
     >
-      <Text style={styles.statIcon}>{icon}</Text>
-      <Text style={[styles.statValue, color && { color }]}>{value ?? "—"}</Text>
+      <View style={[styles.statIconWrap, { backgroundColor: color + "15" }]}>
+        <Feather name={icon} size={18} color={color} />
+      </View>
+      <Text style={[styles.statValue, { color }]}>{value ?? "—"}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-      {onPress && <Text style={[styles.statTap, color && { color }]}>View all →</Text>}
+      {onPress && (
+        <Text style={[styles.statTap, { color }]}>View all</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -87,7 +132,7 @@ function PickerModal({ visible, options, selected, onSelect, onClose, title }) {
           <View style={styles.pickerHeader}>
             <Text style={styles.pickerTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.pickerClose}>✕</Text>
+              <Feather name="x" size={20} color={C.gray} />
             </TouchableOpacity>
           </View>
           {options.map((opt) => (
@@ -100,7 +145,7 @@ function PickerModal({ visible, options, selected, onSelect, onClose, title }) {
               <Text style={[styles.pickerOptionText, selected === opt && styles.pickerOptionTextSelected]}>
                 {opt}
               </Text>
-              {selected === opt && <Text style={{ color: C.green }}>✓</Text>}
+              {selected === opt && <Feather name="check" size={16} color={C.green} />}
             </TouchableOpacity>
           ))}
         </View>
@@ -117,7 +162,7 @@ function SelectField({ label, value, options, onChange }) {
       <Text style={styles.formLabel}>{label}</Text>
       <TouchableOpacity style={styles.selectBtn} onPress={() => setOpen(true)} activeOpacity={0.7}>
         <Text style={styles.selectBtnText}>{value}</Text>
-        <Text style={styles.selectArrow}>▼</Text>
+        <Feather name="chevron-down" size={15} color={C.gray} />
       </TouchableOpacity>
       <PickerModal
         visible={open} title={label} options={options}
@@ -127,7 +172,7 @@ function SelectField({ label, value, options, onChange }) {
   );
 }
 
-// ─── IMAGE UPLOAD SECTION ────────────────────────────────
+// ─── IMAGE UPLOAD FIELD ──────────────────────────────────
 function ImageUploadField({ imageUrl, onImageUploaded }) {
   const [uploading, setUploading] = useState(false);
   const [localUri, setLocalUri] = useState(null);
@@ -135,7 +180,7 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission Required", "Please allow access to your photo library to upload images.", [{ text: "OK" }]);
+      Alert.alert("Permission Required", "Please allow access to your photo library.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -153,7 +198,8 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
     try {
       const formData = new FormData();
       formData.append("image", {
-        uri: asset.uri, name: asset.fileName || `photo_${Date.now()}.jpg`,
+        uri: asset.uri,
+        name: asset.fileName || `photo_${Date.now()}.jpg`,
         type: asset.mimeType || "image/jpeg",
       });
       const token = await AsyncStorage.getItem("authToken");
@@ -166,9 +212,7 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       onImageUploaded(data.imageUrl);
-      Alert.alert("✅ Uploaded!", `Image saved: ${data.imageUrl}`);
     } catch (err) {
-      console.error("Upload error:", err);
       Alert.alert("Upload Failed", err.message);
       setLocalUri(null);
     } finally {
@@ -176,7 +220,9 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
     }
   };
 
-  const previewUri = localUri || (imageUrl ? `http://YOUR_IP:9000/recipe-images/${imageUrl}` : null);
+  // ✅ Use async hook so old numeric filenames (152.jpg → recipe-152.jpg) resolve correctly
+  const resolvedImageUrl = useImageUrl(imageUrl);
+  const previewUri = localUri || resolvedImageUrl;
 
   return (
     <View style={styles.formField}>
@@ -185,7 +231,7 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
         <Image source={{ uri: previewUri }} style={styles.imagePreview} resizeMode="cover" />
       ) : (
         <View style={styles.imagePlaceholder}>
-          <Text style={styles.imagePlaceholderIcon}>🖼️</Text>
+          <Feather name="image" size={28} color={C.gray} />
           <Text style={styles.imagePlaceholderText}>No image selected</Text>
         </View>
       )}
@@ -193,12 +239,21 @@ function ImageUploadField({ imageUrl, onImageUploaded }) {
         style={[styles.uploadBtn, uploading && styles.uploadBtnDisabled]}
         onPress={pickImage} disabled={uploading} activeOpacity={0.8}
       >
-        {uploading
-          ? <ActivityIndicator color={C.white} size="small" />
-          : <Text style={styles.uploadBtnText}>{imageUrl ? "📷  Change Image" : "📷  Upload Image"}</Text>
-        }
+        {uploading ? (
+          <ActivityIndicator color={C.white} size="small" />
+        ) : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Feather name="camera" size={16} color={C.white} />
+            <Text style={styles.uploadBtnText}>{imageUrl ? "Change Image" : "Upload Image"}</Text>
+          </View>
+        )}
       </TouchableOpacity>
-      {imageUrl ? <Text style={styles.imageFilename}>✅ Saved: {imageUrl}</Text> : null}
+      {imageUrl ? (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+          <Feather name="check-circle" size={13} color={C.green} />
+          <Text style={styles.imageFilename} numberOfLines={1}>{imageUrl}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -211,7 +266,9 @@ function FormField({ label, value, onChangeText, multiline = false, keyboardType
       <TextInput
         style={[styles.formInput, multiline && styles.formTextarea]}
         value={value || ""} onChangeText={onChangeText}
-        multiline={multiline} keyboardType={keyboardType} autoCapitalize="none"
+        multiline={multiline} keyboardType={keyboardType}
+        autoCapitalize="none"
+        placeholderTextColor={C.gray}
       />
     </View>
   );
@@ -227,8 +284,10 @@ function RecipeFormModal({ visible, recipe, onClose, onSave }) {
       setForm({
         ...EMPTY_RECIPE, ...recipe,
         cooking_time: String(recipe.cooking_time || 30),
-        calories: String(recipe.calories || 0), protein: String(recipe.protein || 0),
-        carbs: String(recipe.carbs || 0), fats: String(recipe.fats || 0),
+        calories: String(recipe.calories || 0),
+        protein: String(recipe.protein || 0),
+        carbs: String(recipe.carbs || 0),
+        fats: String(recipe.fats || 0),
         servings: String(recipe.servings || 2),
       });
     } else {
@@ -240,7 +299,7 @@ function RecipeFormModal({ visible, recipe, onClose, onSave }) {
 
   const handleSave = async () => {
     if (!form.title.trim() || !form.ingredients.trim() || !form.instructions.trim()) {
-      Alert.alert("Required", "Title, ingredients, and instructions are required.");
+      Alert.alert("Required Fields", "Title, ingredients, and instructions are required.");
       return;
     }
     setSaving(true);
@@ -266,11 +325,17 @@ function RecipeFormModal({ visible, recipe, onClose, onSave }) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
         <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>{recipe ? "✏️ Edit Recipe" : "➕ New Recipe"}</Text>          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.7}>
-            <Text style={styles.modalClose}>✕</Text>
+          <Text style={styles.modalTitle}>{recipe ? "Edit Recipe" : "New Recipe"}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.7}>
+            <Feather name="x" size={22} color={C.textSub} />
           </TouchableOpacity>
         </View>
-        <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        >
           <View style={styles.modalBody}>
             <ImageUploadField imageUrl={form.image_url} onImageUploaded={set("image_url")} />
             <View style={styles.divider} />
@@ -332,7 +397,10 @@ function RecipeFormModal({ visible, recipe, onClose, onSave }) {
             style={[styles.btnSave, saving && styles.btnSaveDisabled]}
             onPress={handleSave} disabled={saving} activeOpacity={0.8}
           >
-            {saving ? <ActivityIndicator color={C.white} /> : <Text style={styles.btnSaveText}>Save Recipe</Text>}
+            {saving
+              ? <ActivityIndicator color={C.white} />
+              : <Text style={styles.btnSaveText}>Save Recipe</Text>
+            }
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -340,7 +408,7 @@ function RecipeFormModal({ visible, recipe, onClose, onSave }) {
   );
 }
 
-// ─── USERS DETAIL MODAL ──────────────────────────────────
+// ─── USERS MODAL ─────────────────────────────────────────
 function UsersModal({ visible, onClose }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -354,25 +422,19 @@ function UsersModal({ visible, onClose }) {
       .finally(() => setLoading(false));
   }, [visible]);
 
-  const formatDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
-
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
         <View style={styles.modalHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ fontSize: 22 }}>👥</Text>
-            <Text style={styles.modalTitle}>All Users</Text>
-          </View>
+          <Text style={styles.modalTitle}>Users</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={styles.modalClose}>✕</Text>
+            <Feather name="x" size={22} color={C.textSub} />
           </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={C.blue} />
-            <Text style={{ color: C.gray, marginTop: 10 }}>Loading users...</Text>
           </View>
         ) : (
           <FlatList
@@ -380,13 +442,12 @@ function UsersModal({ visible, onClose }) {
             keyExtractor={u => String(u.id)}
             contentContainerStyle={{ padding: 14, paddingBottom: 24 }}
             ListHeaderComponent={
-              <Text style={styles.listHeader}>{users.length} registered user{users.length !== 1 ? "s" : ""}</Text>
+              <Text style={styles.listHeader}>{users.length} registered users</Text>
             }
             ListEmptyComponent={<Text style={styles.emptyText}>No users found</Text>}
             renderItem={({ item: u }) => (
               <View style={styles.userCard}>
-                {/* Avatar circle */}
-                <View style={[styles.avatar, { backgroundColor: C.blue + "22" }]}>
+                <View style={[styles.avatar, { backgroundColor: C.blue + "18" }]}>
                   <Text style={[styles.avatarText, { color: C.blue }]}>
                     {(u.full_name || u.username || "?")[0].toUpperCase()}
                   </Text>
@@ -397,11 +458,21 @@ function UsersModal({ visible, onClose }) {
                     {u.is_admin && <Badge label="Admin" color={C.purple} />}
                   </View>
                   <Text style={styles.userCardEmail}>{u.email}</Text>
-                  <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
-                    <Text style={styles.userCardMeta}>📅 Joined {formatDate(u.created_at)}</Text>
-                    <Text style={[styles.userCardMeta, { color: u.email_verified ? C.green : C.orange }]}>
-                      {u.email_verified ? "✅ Verified" : "⚠️ Unverified"}
-                    </Text>
+                  <View style={{ flexDirection: "row", gap: 12, marginTop: 4, alignItems: "center" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Feather name="calendar" size={11} color={C.gray} />
+                      <Text style={styles.userCardMeta}>{formatDate(u.created_at)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Feather
+                        name={u.email_verified ? "check-circle" : "alert-circle"}
+                        size={11}
+                        color={u.email_verified ? C.green : C.yellow}
+                      />
+                      <Text style={[styles.userCardMeta, { color: u.email_verified ? C.green : C.yellow }]}>
+                        {u.email_verified ? "Verified" : "Unverified"}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -413,7 +484,7 @@ function UsersModal({ visible, onClose }) {
   );
 }
 
-// ─── RATINGS DETAIL MODAL ────────────────────────────────
+// ─── RATINGS MODAL ───────────────────────────────────────
 function RatingsModal({ visible, onClose }) {
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -427,8 +498,6 @@ function RatingsModal({ visible, onClose }) {
       .finally(() => setLoading(false));
   }, [visible]);
 
-  const formatDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
-
   const renderStars = (rating) => {
     const full = Math.round(rating);
     return "★".repeat(full) + "☆".repeat(5 - full);
@@ -438,19 +507,15 @@ function RatingsModal({ visible, onClose }) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
         <View style={styles.modalHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ fontSize: 22 }}>⭐</Text>
-            <Text style={styles.modalTitle}>All Ratings</Text>
-          </View>
+          <Text style={styles.modalTitle}>Ratings</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={styles.modalClose}>✕</Text>
+            <Feather name="x" size={22} color={C.textSub} />
           </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={C.yellow} />
-            <Text style={{ color: C.gray, marginTop: 10 }}>Loading ratings...</Text>
           </View>
         ) : (
           <FlatList
@@ -458,7 +523,7 @@ function RatingsModal({ visible, onClose }) {
             keyExtractor={r => String(r.rating_id || r.id)}
             contentContainerStyle={{ padding: 14, paddingBottom: 24 }}
             ListHeaderComponent={
-              <Text style={styles.listHeader}>{ratings.length} total rating{ratings.length !== 1 ? "s" : ""}</Text>
+              <Text style={styles.listHeader}>{ratings.length} total ratings</Text>
             }
             ListEmptyComponent={<Text style={styles.emptyText}>No ratings yet</Text>}
             renderItem={({ item: r }) => (
@@ -466,9 +531,9 @@ function RatingsModal({ visible, onClose }) {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.ratingRecipeName} numberOfLines={1}>
-                      🍽️ {r.recipe_title || `Recipe #${r.recipe_id}`}
+                      {r.recipe_title || `Recipe #${r.recipe_id}`}
                     </Text>
-                    <Text style={styles.ratingUser}>👤 {r.user_name || r.username || `User #${r.user_id}`}</Text>
+                    <Text style={styles.ratingUser}>{r.user_name || r.username || `User #${r.user_id}`}</Text>
                   </View>
                   <View style={styles.ratingBadge}>
                     <Text style={styles.ratingScore}>{Number(r.rating).toFixed(1)}</Text>
@@ -477,9 +542,9 @@ function RatingsModal({ visible, onClose }) {
                 <Text style={[styles.ratingStars, { color: C.yellow }]}>
                   {renderStars(r.rating)}
                 </Text>
-                {r.review && (
+                {r.review ? (
                   <Text style={styles.ratingReview} numberOfLines={2}>"{r.review}"</Text>
-                )}
+                ) : null}
                 <Text style={styles.ratingDate}>{formatDate(r.created_at)}</Text>
               </View>
             )}
@@ -490,7 +555,7 @@ function RatingsModal({ visible, onClose }) {
   );
 }
 
-// ─── RECIPES DETAIL MODAL (all recipes from dashboard tap) ─
+// ─── RECIPES OVERVIEW MODAL (from dashboard tap) ─────────
 function RecipesModal({ visible, onClose }) {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -508,19 +573,15 @@ function RecipesModal({ visible, onClose }) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
         <View style={styles.modalHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ fontSize: 22 }}>🍽️</Text>
-            <Text style={styles.modalTitle}>All Recipes</Text>
-          </View>
+          <Text style={styles.modalTitle}>All Recipes</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={styles.modalClose}>✕</Text>
+            <Feather name="x" size={22} color={C.textSub} />
           </TouchableOpacity>
         </View>
 
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={C.green} />
-            <Text style={{ color: C.gray, marginTop: 10 }}>Loading recipes...</Text>
           </View>
         ) : (
           <FlatList
@@ -528,7 +589,7 @@ function RecipesModal({ visible, onClose }) {
             keyExtractor={r => String(r.recipe_id)}
             contentContainerStyle={{ padding: 14, paddingBottom: 24 }}
             ListHeaderComponent={
-              <Text style={styles.listHeader}>{recipes.length} total recipe{recipes.length !== 1 ? "s" : ""}</Text>
+              <Text style={styles.listHeader}>{recipes.length} recipes</Text>
             }
             ListEmptyComponent={<Text style={styles.emptyText}>No recipes found</Text>}
             renderItem={({ item: r }) => (
@@ -537,12 +598,12 @@ function RecipesModal({ visible, onClose }) {
                   <Text style={styles.recipeCardTitle} numberOfLines={1}>{r.title}</Text>
                   <Text style={styles.recipeCardSub}>{r.cuisine_type} · {r.meal_type}</Text>
                   <View style={styles.recipeCardMeta}>
-                    <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level] || C.gray} />
+                    <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level]?.text || C.gray} />
                     <Text style={styles.recipeCardCal}>{r.calories} cal</Text>
-                    <Text style={styles.rating}>⭐ {Number(r.rating || 0).toFixed(1)}</Text>
-                    {r.rating_count > 0 && (
-                      <Text style={styles.ratingCount}>({r.rating_count})</Text>
-                    )}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                      <Feather name="star" size={11} color={C.yellow} />
+                      <Text style={styles.rating}>{Number(r.rating || 0).toFixed(1)}</Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -559,8 +620,6 @@ function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal visibility state
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showRatingsModal, setShowRatingsModal] = useState(false);
   const [showRecipesModal, setShowRecipesModal] = useState(false);
@@ -580,7 +639,6 @@ function DashboardPage() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={C.green} />
-        <Text style={{ color: C.gray, marginTop: 10 }}>Loading dashboard...</Text>
       </View>
     );
   }
@@ -588,26 +646,23 @@ function DashboardPage() {
   return (
     <>
       <ScrollView style={styles.pageContent} showsVerticalScrollIndicator={false}>
-        {/* ── STAT CARDS (tappable) ── */}
+        {/* STAT CARDS */}
         <View style={styles.statRow}>
           <StatCard
-            icon="🍽️" label="Recipes" value={stats?.totalRecipes}
-            color={C.green}
-            onPress={() => setShowRecipesModal(true)}
+            icon="book-open" label="Recipes" value={stats?.totalRecipes}
+            color={C.green} onPress={() => setShowRecipesModal(true)}
           />
           <StatCard
-            icon="👤" label="Users" value={stats?.totalUsers}
-            color={C.blue}
-            onPress={() => setShowUsersModal(true)}
+            icon="users" label="Users" value={stats?.totalUsers}
+            color={C.blue} onPress={() => setShowUsersModal(true)}
           />
           <StatCard
-            icon="⭐" label="Ratings" value={stats?.totalRatings}
-            color={C.yellow}
-            onPress={() => setShowRatingsModal(true)}
+            icon="star" label="Ratings" value={stats?.totalRatings}
+            color={C.yellow} onPress={() => setShowRatingsModal(true)}
           />
         </View>
 
-        {/* ── RECENT RECIPES ── */}
+        {/* RECENT RECIPES */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Recipes</Text>
           {recipes.length === 0 ? (
@@ -619,18 +674,21 @@ function DashboardPage() {
                   <Text style={styles.recipeTitle} numberOfLines={1}>{r.title}</Text>
                   <Text style={styles.recipeSub}>{r.cuisine_type} · {r.meal_type}</Text>
                 </View>
-                <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level] || C.gray} />
-                <Text style={styles.rating}>⭐ {Number(r.rating || 0).toFixed(1)}</Text>
+                <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level]?.text || C.gray} />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginLeft: 8 }}>
+                  <Feather name="star" size={11} color={C.yellow} />
+                  <Text style={styles.rating}>{Number(r.rating || 0).toFixed(1)}</Text>
+                </View>
               </View>
             ))
           )}
-          <TouchableOpacity style={styles.viewAllBtn} onPress={() => setShowRecipesModal(true)}>
-            <Text style={styles.viewAllText}>View all recipes →</Text>
+          <TouchableOpacity style={styles.viewAllBtn} onPress={() => setShowRecipesModal(true)} activeOpacity={0.7}>
+            <Text style={styles.viewAllText}>View all recipes</Text>
+            <Feather name="arrow-right" size={14} color={C.green} />
           </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* ── DETAIL MODALS ── */}
       <UsersModal visible={showUsersModal} onClose={() => setShowUsersModal(false)} />
       <RatingsModal visible={showRatingsModal} onClose={() => setShowRatingsModal(false)} />
       <RecipesModal visible={showRecipesModal} onClose={() => setShowRecipesModal(false)} />
@@ -663,13 +721,13 @@ function RecipesPage() {
   const handleCreate = async (form) => {
     await api.post("/admin/recipes", form);
     load();
-    Alert.alert("✅ Created", `"${form.title}" has been added.`);
+    Alert.alert("Created", `"${form.title}" has been added.`);
   };
 
   const handleUpdate = async (form) => {
     await api.put(`/admin/recipes/${form.recipe_id}`, form);
     load();
-    Alert.alert("✅ Updated", `"${form.title}" has been updated.`);
+    Alert.alert("Updated", `"${form.title}" has been updated.`);
   };
 
   const handleDelete = (recipe) => {
@@ -696,19 +754,23 @@ function RecipesPage() {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.searchBar}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="🔍  Search recipes..."
-          placeholderTextColor={C.gray}
-          value={search}
-          onChangeText={setSearch}
-        />
+        <View style={styles.searchInputWrap}>
+          <Feather name="search" size={15} color={C.gray} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search recipes..."
+            placeholderTextColor={C.gray}
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => { setEditRecipe(null); setShowForm(true); }}
           activeOpacity={0.8}
         >
-          <Text style={styles.addBtnText}>+ New</Text>
+          <Feather name="plus" size={16} color={C.white} />
+          <Text style={styles.addBtnText}>New</Text>
         </TouchableOpacity>
       </View>
 
@@ -726,39 +788,54 @@ function RecipesPage() {
           ListEmptyComponent={<Text style={styles.emptyText}>No recipes found</Text>}
           renderItem={({ item: r }) => (
             <View style={styles.recipeCard}>
+              {/* Thumbnail if image exists */}
+              {r.image_url ? (
+                <Image
+                  source={{ uri: buildImageUrl(r.image_url) }}
+                  style={styles.recipeThumbnail}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.recipeThumbnail, styles.recipeThumbnailEmpty]}>
+                  <Feather name="image" size={18} color={C.gray} />
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.recipeCardTitle} numberOfLines={1}>{r.title}</Text>
                 <Text style={styles.recipeCardSub}>{r.cuisine_type} · {r.meal_type}</Text>
                 <View style={styles.recipeCardMeta}>
-                  <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level] || C.gray} />
+                  <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level]?.text || C.gray} />
                   <Text style={styles.recipeCardCal}>{r.calories} cal</Text>
-                  <Text style={styles.rating}>⭐ {Number(r.rating || 0).toFixed(1)}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                    <Feather name="star" size={11} color={C.yellow} />
+                    <Text style={styles.rating}>{Number(r.rating || 0).toFixed(1)}</Text>
+                  </View>
                 </View>
               </View>
               <View style={styles.recipeCardActions}>
                 <TouchableOpacity
                   style={styles.editBtn}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   activeOpacity={0.7}
                   onPress={async () => {
                     try {
                       const res = await api.get(`/admin/recipes/${r.recipe_id}`);
                       setEditRecipe(res.data);
                       setShowForm(true);
-                    } catch (err) {
+                    } catch {
                       Alert.alert("Error", "Could not load recipe details.");
                     }
                   }}
                 >
-                  <Text style={styles.editBtnText}>✏️ Edit</Text>
+                  <Feather name="edit-2" size={13} color={C.green} />
+                  <Text style={styles.editBtnText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.deleteBtn}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   activeOpacity={0.7}
                   onPress={() => handleDelete(r)}
                 >
-                  <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
+                  <Feather name="trash-2" size={13} color={C.red} />
+                  <Text style={styles.deleteBtnText}>Delete</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -799,9 +876,11 @@ export default function Adminpanel({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={C.white} />
+
+      {/* TOP BAR */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
-          <MaterialCommunityIcons name="chef-hat" size={28} color="#16a34a" />
+          <MaterialCommunityIcons name="chef-hat" size={32} color={C.green} />
           <Text style={styles.topBarTitle}>CookMate Admin</Text>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
@@ -814,13 +893,22 @@ export default function Adminpanel({ navigation }) {
         {page === "recipes" && <RecipesPage />}
       </View>
 
+      {/* TAB BAR */}
       <View style={styles.tabBar}>
-        <TouchableOpacity style={styles.tabItem} onPress={() => setPage("dashboard")} activeOpacity={0.7}>
-          <Text style={[styles.tabIcon, page === "dashboard" && styles.tabIconActive]}>📊</Text>
+        <TouchableOpacity
+          style={[styles.tabItem, page === "dashboard" && styles.tabItemActive]}
+          onPress={() => setPage("dashboard")}
+          activeOpacity={0.7}
+        >
+          <Feather name="bar-chart-2" size={20} color={page === "dashboard" ? C.green : C.gray} />
           <Text style={[styles.tabLabel, page === "dashboard" && styles.tabLabelActive]}>Dashboard</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem} onPress={() => setPage("recipes")} activeOpacity={0.7}>
-          <Text style={[styles.tabIcon, page === "recipes" && styles.tabIconActive]}>🍽️</Text>
+        <TouchableOpacity
+          style={[styles.tabItem, page === "recipes" && styles.tabItemActive]}
+          onPress={() => setPage("recipes")}
+          activeOpacity={0.7}
+        >
+          <Feather name="book-open" size={20} color={page === "recipes" ? C.green : C.gray} />
           <Text style={[styles.tabLabel, page === "recipes" && styles.tabLabelActive]}>Recipes</Text>
         </TouchableOpacity>
       </View>
@@ -831,186 +919,254 @@ export default function Adminpanel({ navigation }) {
 // ─── STYLES ──────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+
+  // TOP BAR
   topBar: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: C.white, paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: C.white, paddingHorizontal: 16, paddingVertical: 11,
     borderBottomWidth: 1, borderBottomColor: C.border,
     elevation: 2, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 4,
   },
-  topBarLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  topBarIcon: { fontSize: 22 },
-  topBarTitle: { fontSize: 18, fontWeight: "700", color: C.green },
+  topBarLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
 
-  logoutBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, borderWidth: 1.5, borderColor: C.red },
+  topBarTitle: { fontSize: 16, fontWeight: "700", color: C.text, letterSpacing: -0.2 },
+  logoutBtn: {
+    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: C.redBorder, backgroundColor: C.redLight,
+  },
   logoutBtnText: { color: C.red, fontWeight: "600", fontSize: 13 },
 
+  // TAB BAR
   tabBar: {
     flexDirection: "row", backgroundColor: C.white,
     borderTopWidth: 1, borderTopColor: C.border,
-    paddingBottom: Platform.OS === "ios" ? 16 : 8, paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 16 : 6, paddingTop: 6,
   },
-  tabItem: { flex: 1, alignItems: "center" },
-  tabIcon: { fontSize: 22, opacity: 0.4 },
-  tabIconActive: { opacity: 1 },
-  tabLabel: { fontSize: 11, color: C.gray, marginTop: 2 },
+  tabItem: { flex: 1, alignItems: "center", paddingVertical: 4 },
+  tabItemActive: {},
+  tabLabel: { fontSize: 11, color: C.gray, marginTop: 3 },
   tabLabelActive: { color: C.green, fontWeight: "700" },
 
-  pageContent: { flex: 1, padding: 16 },
+  // LAYOUT
+  pageContent: { flex: 1, padding: 14 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyText: { textAlign: "center", color: C.gray, paddingVertical: 24, fontSize: 14 },
-  countText: { paddingHorizontal: 16, paddingTop: 8, fontSize: 12, color: C.gray },
+  countText: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 2, fontSize: 12, color: C.gray },
   divider: { height: 1, backgroundColor: C.border, marginVertical: 14 },
-  listHeader: { fontSize: 13, color: C.gray, fontWeight: "600", marginBottom: 10 },
+  listHeader: { fontSize: 12, color: C.gray, fontWeight: "600", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 },
 
-  // Stat cards
+  // STAT CARDS
   statRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
   statCard: {
     flex: 1, backgroundColor: C.card, borderRadius: 14, padding: 14,
     alignItems: "center", borderWidth: 1, borderColor: C.border,
     shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
-  statCardTappable: {
-    borderWidth: 1.5,
-    shadowOpacity: 0.08, elevation: 3,
+  statIconWrap: {
+    width: 38, height: 38, borderRadius: 10,
+    alignItems: "center", justifyContent: "center", marginBottom: 8,
   },
-  statIcon: { fontSize: 24, marginBottom: 4 },
-  statValue: { fontSize: 22, fontWeight: "800", color: C.green },
+  statValue: { fontSize: 22, fontWeight: "800" },
   statLabel: { fontSize: 11, color: C.gray, marginTop: 2 },
-  statTap: { fontSize: 10, color: C.green, marginTop: 6, fontWeight: "600" },
+  statTap: { fontSize: 10, marginTop: 6, fontWeight: "600" },
 
-  // Dashboard section
+  // DASHBOARD SECTION
   section: {
     backgroundColor: C.card, borderRadius: 14, borderWidth: 1,
     borderColor: C.border, overflow: "hidden", marginBottom: 16,
     shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
-  sectionTitle: { fontSize: 14, fontWeight: "700", color: C.text, padding: 14, borderBottomWidth: 1, borderBottomColor: C.border },
+  sectionTitle: {
+    fontSize: 13, fontWeight: "700", color: C.text,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+    textTransform: "uppercase", letterSpacing: 0.5,
+  },
   recipeRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
+    flexDirection: "row", alignItems: "center",
     paddingHorizontal: 14, paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
   recipeTitle: { fontSize: 13, fontWeight: "600", color: C.text },
   recipeSub: { fontSize: 11, color: C.gray, marginTop: 2 },
-  rating: { fontSize: 12, color: C.gray, marginLeft: 4 },
-  ratingCount: { fontSize: 11, color: C.gray },
-  viewAllBtn: { padding: 14, alignItems: "center" },
-  viewAllText: { fontSize: 13, color: C.green, fontWeight: "700" },
+  rating: { fontSize: 12, color: C.textSub },
+  viewAllBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    padding: 14, gap: 6,
+  },
+  viewAllText: { fontSize: 13, color: C.green, fontWeight: "600" },
 
-  // Badge
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
+  // BADGE
+  badge: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 6, borderWidth: 1,
+  },
   badgeText: { fontSize: 11, fontWeight: "700" },
 
-  // Search bar
+  // SEARCH BAR
   searchBar: {
     flexDirection: "row", gap: 10, padding: 12,
     backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  searchInput: {
-    flex: 1, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12,
-    paddingVertical: 9, fontSize: 14, color: C.text, borderWidth: 1, borderColor: C.border,
+  searchInputWrap: {
+    flex: 1, flexDirection: "row", alignItems: "center",
+    backgroundColor: C.bg, borderRadius: 10,
+    paddingHorizontal: 12, borderWidth: 1, borderColor: C.border,
   },
-  addBtn: { backgroundColor: C.green, borderRadius: 10, paddingHorizontal: 18, justifyContent: "center" },
+  searchInput: {
+    flex: 1, paddingVertical: 9, fontSize: 14, color: C.text,
+  },
+  addBtn: {
+    backgroundColor: C.green, borderRadius: 10,
+    paddingHorizontal: 14, flexDirection: "row",
+    alignItems: "center", gap: 6,
+  },
   addBtnText: { color: C.white, fontWeight: "700", fontSize: 14 },
 
-  // Recipe cards
+  // RECIPE CARDS
   recipeCard: {
-    backgroundColor: C.card, borderRadius: 14, borderWidth: 1,
-    borderColor: C.border, padding: 14, marginBottom: 10,
-    flexDirection: "row", alignItems: "flex-start", gap: 10,
+    backgroundColor: C.card, borderRadius: 12, borderWidth: 1,
+    borderColor: C.border, padding: 12, marginBottom: 10,
+    flexDirection: "row", alignItems: "center", gap: 10,
     shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
   },
+  recipeThumbnail: {
+    width: 54, height: 54, borderRadius: 10, backgroundColor: C.grayLight,
+  },
+  recipeThumbnailEmpty: {
+    alignItems: "center", justifyContent: "center",
+  },
   recipeCardTitle: { fontSize: 14, fontWeight: "700", color: C.text },
-  recipeCardSub: { fontSize: 12, color: C.gray, marginTop: 2 },
-  recipeCardMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  recipeCardSub: { fontSize: 12, color: C.gray, marginTop: 1 },
+  recipeCardMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" },
   recipeCardCal: { fontSize: 12, color: C.gray },
-  recipeCardActions: { gap: 8, alignItems: "flex-end" },
+  recipeCardActions: { gap: 6, alignItems: "flex-end" },
   editBtn: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-    borderWidth: 1.5, borderColor: C.green, backgroundColor: C.greenLight,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: C.greenBorder, backgroundColor: C.greenLight,
   },
   editBtnText: { color: C.green, fontWeight: "700", fontSize: 12 },
   deleteBtn: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-    borderWidth: 1.5, borderColor: C.red, backgroundColor: C.redLight,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: C.redBorder, backgroundColor: C.redLight,
   },
   deleteBtnText: { color: C.red, fontWeight: "700", fontSize: 12 },
 
-  // User cards
+  // USER CARDS
   userCard: {
-    backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border,
-    padding: 14, marginBottom: 10, flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border,
+    padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 12,
     shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 18, fontWeight: "800" },
+  avatar: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
+  avatarText: { fontSize: 17, fontWeight: "800" },
   userCardName: { fontSize: 14, fontWeight: "700", color: C.text },
   userCardEmail: { fontSize: 12, color: C.gray, marginTop: 2 },
-  userCardMeta: { fontSize: 11, color: C.gray, marginTop: 2 },
+  userCardMeta: { fontSize: 11, color: C.gray },
 
-  // Rating cards
+  // RATING CARDS
   ratingCard: {
-    backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border,
-    padding: 14, marginBottom: 10,
+    backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border,
+    padding: 12, marginBottom: 8,
     shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
   },
   ratingRecipeName: { fontSize: 14, fontWeight: "700", color: C.text, flex: 1 },
   ratingUser: { fontSize: 12, color: C.gray, marginTop: 2 },
   ratingBadge: {
-    backgroundColor: C.yellow + "22", borderRadius: 10,
+    backgroundColor: C.yellowLight, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8,
+    borderWidth: 1, borderColor: "#fde68a",
   },
-  ratingScore: { fontSize: 16, fontWeight: "800", color: C.yellow },
-  ratingStars: { fontSize: 16, marginTop: 6, letterSpacing: 2 },
+  ratingScore: { fontSize: 15, fontWeight: "800", color: C.yellow },
+  ratingStars: { fontSize: 15, marginTop: 6, letterSpacing: 2 },
   ratingReview: { fontSize: 12, color: C.textSub, marginTop: 6, fontStyle: "italic" },
   ratingDate: { fontSize: 11, color: C.gray, marginTop: 6 },
 
-  // Modal
+  // MODAL
   modalHeader: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    padding: 16, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.border,
+    padding: 16, backgroundColor: C.white,
+    borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: C.text },
-  modalClose: { fontSize: 20, color: C.gray, padding: 4 },
+  modalTitle: { fontSize: 17, fontWeight: "700", color: C.text, letterSpacing: -0.2 },
   modalBody: { padding: 16 },
   modalFooter: {
     flexDirection: "row", gap: 10, padding: 16,
     backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border,
   },
 
-  // Form
+  // FORM
   formField: { marginBottom: 14 },
-  formLabel: { fontSize: 12, fontWeight: "700", color: C.gray, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.3 },
-  formInput: { borderWidth: 1.5, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: C.text, backgroundColor: C.white },
+  formLabel: {
+    fontSize: 11, fontWeight: "700", color: C.textSub,
+    marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5,
+  },
+  formInput: {
+    borderWidth: 1.5, borderColor: C.border, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 14, color: C.text, backgroundColor: C.white,
+  },
   formTextarea: { minHeight: 80, textAlignVertical: "top" },
   formRow: { flexDirection: "row", marginBottom: 0 },
 
-  selectBtn: { borderWidth: 1.5, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: C.white, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  selectBtn: {
+    borderWidth: 1.5, borderColor: C.border, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, backgroundColor: C.white,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+  },
   selectBtnText: { fontSize: 14, color: C.text, fontWeight: "500" },
-  selectArrow: { fontSize: 11, color: C.gray },
 
-  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  pickerSheet: { backgroundColor: C.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: Platform.OS === "ios" ? 30 : 16, overflow: "hidden" },
-  pickerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
+  pickerSheet: {
+    backgroundColor: C.white, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingBottom: Platform.OS === "ios" ? 30 : 16, overflow: "hidden",
+  },
+  pickerHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    padding: 16, borderBottomWidth: 1, borderBottomColor: C.border,
+  },
   pickerTitle: { fontSize: 15, fontWeight: "700", color: C.text },
-  pickerClose: { fontSize: 18, color: C.gray },
-  pickerOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
+  pickerOption: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: C.grayLight,
+  },
   pickerOptionSelected: { backgroundColor: C.greenLight },
   pickerOptionText: { fontSize: 15, color: C.text },
   pickerOptionTextSelected: { color: C.green, fontWeight: "700" },
 
-  imagePreview: { width: "100%", height: 180, borderRadius: 12, marginBottom: 10, backgroundColor: C.border },
-  imagePlaceholder: { width: "100%", height: 140, borderRadius: 12, borderWidth: 2, borderColor: C.border, borderStyle: "dashed", alignItems: "center", justifyContent: "center", backgroundColor: C.grayLight, marginBottom: 10 },
-  imagePlaceholderIcon: { fontSize: 36, marginBottom: 6 },
+  // IMAGE UPLOAD
+  imagePreview: {
+    width: "100%", height: 180, borderRadius: 12,
+    marginBottom: 10, backgroundColor: C.border,
+  },
+  imagePlaceholder: {
+    width: "100%", height: 130, borderRadius: 12,
+    borderWidth: 1.5, borderColor: C.border, borderStyle: "dashed",
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: C.grayLight, marginBottom: 10, gap: 8,
+  },
   imagePlaceholderText: { color: C.gray, fontSize: 13 },
-  uploadBtn: { backgroundColor: C.blue, borderRadius: 10, paddingVertical: 11, alignItems: "center" },
+  uploadBtn: {
+    backgroundColor: C.green, borderRadius: 10,
+    paddingVertical: 11, alignItems: "center",
+  },
   uploadBtnDisabled: { backgroundColor: C.gray },
   uploadBtnText: { color: C.white, fontWeight: "700", fontSize: 14 },
-  imageFilename: { marginTop: 8, fontSize: 12, color: C.green, textAlign: "center" },
+  imageFilename: { fontSize: 12, color: C.green, flex: 1 },
 
-  btnCancel: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: C.gray, alignItems: "center" },
-  btnCancelText: { color: C.gray, fontWeight: "600", fontSize: 15 },
-  btnSave: { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: C.green, alignItems: "center" },
+  // BUTTONS
+  btnCancel: {
+    flex: 1, paddingVertical: 13, borderRadius: 12,
+    borderWidth: 1.5, borderColor: C.border, alignItems: "center",
+  },
+  btnCancelText: { color: C.textSub, fontWeight: "600", fontSize: 15 },
+  btnSave: {
+    flex: 2, paddingVertical: 13, borderRadius: 12,
+    backgroundColor: C.green, alignItems: "center",
+  },
   btnSaveDisabled: { backgroundColor: C.greenMid },
   btnSaveText: { color: C.white, fontWeight: "700", fontSize: 15 },
 });
