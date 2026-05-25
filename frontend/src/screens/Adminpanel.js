@@ -696,6 +696,43 @@ function DashboardPage() {
   );
 }
 
+// ─── RECIPE LIST CARD ────────────────────────────────────
+function RecipeListCard({ r, minioBase, onEdit, onDelete }) {
+  // Resolve image synchronously once minioBase is available (passed from parent)
+  const resolvedUrl = minioBase && r.image_url ? buildUrl(minioBase, r.image_url) : null;
+
+  return (
+    <View style={styles.recipeCard}>
+
+      {/* Info */}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.recipeCardTitle} numberOfLines={1}>{r.title}</Text>
+        <Text style={styles.recipeCardSub}>{r.cuisine_type} · {r.meal_type}</Text>
+        <View style={styles.recipeCardMeta}>
+          <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level]?.text || C.gray} />
+          <Text style={styles.recipeCardCal}>{r.calories} cal</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Feather name="star" size={11} color={C.yellow} />
+            <Text style={styles.rating}>{Number(r.rating || 0).toFixed(1)}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.recipeCardActions}>
+        <TouchableOpacity style={styles.editBtn} activeOpacity={0.7} onPress={onEdit}>
+          <Feather name="edit-2" size={13} color={C.green} />
+          <Text style={styles.editBtnText}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteBtn} activeOpacity={0.7} onPress={onDelete}>
+          <Feather name="trash-2" size={13} color={C.red} />
+          <Text style={styles.deleteBtnText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // ─── RECIPES PAGE ────────────────────────────────────────
 function RecipesPage() {
   const [recipes, setRecipes] = useState([]);
@@ -703,6 +740,11 @@ function RecipesPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editRecipe, setEditRecipe] = useState(null);
+  const [minioBase, setMinioBase] = useState(null);
+
+  useEffect(() => {
+    getMinioBaseUrl().then(setMinioBase);
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -787,59 +829,22 @@ function RecipesPage() {
           contentContainerStyle={{ padding: 12, paddingBottom: 20 }}
           ListEmptyComponent={<Text style={styles.emptyText}>No recipes found</Text>}
           renderItem={({ item: r }) => (
-            <View style={styles.recipeCard}>
-              {/* Thumbnail if image exists */}
-              {r.image_url ? (
-                <Image
-                  source={{ uri: buildImageUrl(r.image_url) }}
-                  style={styles.recipeThumbnail}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.recipeThumbnail, styles.recipeThumbnailEmpty]}>
-                  <Feather name="image" size={18} color={C.gray} />
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.recipeCardTitle} numberOfLines={1}>{r.title}</Text>
-                <Text style={styles.recipeCardSub}>{r.cuisine_type} · {r.meal_type}</Text>
-                <View style={styles.recipeCardMeta}>
-                  <Badge label={r.difficulty_level} color={diffColor[r.difficulty_level]?.text || C.gray} />
-                  <Text style={styles.recipeCardCal}>{r.calories} cal</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                    <Feather name="star" size={11} color={C.yellow} />
-                    <Text style={styles.rating}>{Number(r.rating || 0).toFixed(1)}</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={styles.recipeCardActions}>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  activeOpacity={0.7}
-                  onPress={async () => {
-                    try {
-                      const res = await api.get(`/admin/recipes/${r.recipe_id}`);
-                      setEditRecipe(res.data);
-                      setShowForm(true);
-                    } catch {
-                      Alert.alert("Error", "Could not load recipe details.");
-                    }
-                  }}
-                >
-                  <Feather name="edit-2" size={13} color={C.green} />
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  activeOpacity={0.7}
-                  onPress={() => handleDelete(r)}
-                >
-                  <Feather name="trash-2" size={13} color={C.red} />
-                  <Text style={styles.deleteBtnText}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <RecipeListCard
+              r={r}
+              minioBase={minioBase}
+              onEdit={async () => {
+                try {
+                  const res = await api.get(`/admin/recipes/${r.recipe_id}`);
+                  setEditRecipe(res.data);
+                  setShowForm(true);
+                } catch {
+                  Alert.alert("Error", "Could not load recipe details.");
+                }
+              }}
+              onDelete={() => handleDelete(r)}
+            />
           )}
+
         />
       )}
 
