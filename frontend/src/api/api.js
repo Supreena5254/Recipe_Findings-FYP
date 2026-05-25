@@ -9,7 +9,7 @@ import Constants from 'expo-constants';
 const getBaseURL = () => {
   // Production mode
   if (!__DEV__) {
-    return 'https://your-production-api.com/api';
+    return 'https://cookmate-backend-qga1.onrender.com/api';
   }
 
   // Development mode
