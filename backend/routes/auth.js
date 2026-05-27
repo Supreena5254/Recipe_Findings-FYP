@@ -37,4 +37,7 @@ router.put("/change-password", authMiddleware, authController.changePassword);
 // Logout
 router.post("/logout", authMiddleware, authController.logoutUser);
 
+// Delete account
+router.delete("/delete-account", authMiddleware, authController.deleteAccount);
+
 module.exports = router;

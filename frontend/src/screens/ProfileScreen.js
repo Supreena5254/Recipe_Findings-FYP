@@ -736,6 +736,43 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete your account? This will permanently delete all your data including favorites, ratings, and grocery lists. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Final Confirmation",
+              "This is permanent. Are you absolutely sure?",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Yes, Delete My Account",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await api.delete("/auth/delete-account");
+                      await AsyncStorage.clear();
+                      navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+                    } catch (error) {
+                      Alert.alert("Error", "Failed to delete account. Please try again.");
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const displayArrayValue = (value) => {
     if (!value) return "Not set";
     if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "Not set";
@@ -952,6 +989,13 @@ export default function ProfileScreen({ navigation }) {
                 </View>
                 <Feather name="chevron-right" size={20} color="#dc2626" />
               </TouchableOpacity>
+              <TouchableOpacity style={styles.actionRow} onPress={handleDeleteAccount}>
+                <View style={styles.actionLeft}>
+                  <Feather name="trash-2" size={20} color="#ef4444" />
+                  <Text style={[styles.actionText, styles.deleteText]}>Delete Account</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color="#ef4444" />
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1083,6 +1127,7 @@ const styles = StyleSheet.create({
   actionLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
   actionText: { fontSize: 16, color: "#333", fontWeight: "500" },
   logoutText: { color: "#dc2626" },
+  deleteText: { color: "#ef4444" },
 
   saveButtonContainer: {
     position: "absolute", bottom: 0, left: 0, right: 0,

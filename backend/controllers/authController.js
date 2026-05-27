@@ -550,3 +550,18 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+exports.deleteAccount = async (req, res) => {
+  const userId = req.user.id;
+  try {
+    await pool.query("DELETE FROM cooked_recipes WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM viewed_recipes WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM grocery_list WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM user_favorites WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM ratings WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM user_preferences WHERE user_id = $1", [userId]);
+    await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+    res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
